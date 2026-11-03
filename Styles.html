@@ -280,7 +280,12 @@ h1,h2,h3,p{margin:0}
 .d-btn:hover{background:var(--soft2);color:var(--ink)}
 .d-sub{display:flex;align-items:center;gap:8px;padding:10px 24px;border-bottom:1px solid var(--line);background:var(--subtle);font-size:13px;color:var(--sec2)}
 .d-sub .ic{color:var(--green)}
-.d-body{flex:1;overflow-y:auto;padding:28px 24px 32px;display:flex;flex-direction:column;gap:24px}
+.d-body{position:relative;flex:1;overflow-y:auto;padding:28px 24px 32px;display:flex;flex-direction:column;gap:24px}
+.thinking{display:flex;flex-direction:column;gap:8px;padding:2px 0}
+.think-step{display:flex;align-items:flex-start;gap:10px;font-size:14px;line-height:20px;color:var(--sec);animation:thinkIn .25s ease-out}
+.think-step.done{color:var(--muted)}
+.think-step .mark{width:16px;height:20px;display:flex;align-items:center;justify-content:center;flex-shrink:0;color:var(--green)}
+@keyframes thinkIn{from{opacity:0;transform:translateY(3px)}to{opacity:1;transform:none}}
 .hello{display:flex;flex-direction:column;gap:8px;padding-top:4px}
 .hello b{font-size:22px;font-weight:600;line-height:28px;letter-spacing:-.01em}
 .hello span{font-size:15px;line-height:23px;color:var(--sec2);text-wrap:pretty}

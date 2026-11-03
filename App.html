@@ -161,7 +161,7 @@ function App() {
   const [s, setS] = useState({
     step: 'home', homeView: 'search', type: 'sop', dept: null, docId: null, active: 's0', activeSub: null, tocOpen: {}, anim: true,
     q: '', focus: null, homeQ: null, homeAns: null, homeTyping: false, homeTab: 'mancu', browseQ: '',
-    chatOpen: false, msgs: [], typing: false, draft: '', toast: null, w: NEW_WRITER(), saving: false
+    chatOpen: false, msgs: [], typing: false, think: null, draft: '', toast: null, w: NEW_WRITER(), saving: false
   });
   const set = patch => setS(p => ({ ...p, ...(typeof patch === 'function' ? patch(p) : patch) }));
   const [docs, setDocs] = useState(null);
@@ -200,22 +200,36 @@ function App() {
   const aiMsg = a => ({ ai: true, intro: a.intro, items: a.items || [], note: a.note || '', sources: a.sources || [], error: !!a.error });
   // On a document page Mancu reads that document first; elsewhere it reads every published one.
   const ctxDocId = () => sRef.current.step === 'reader' ? sRef.current.docId : '';
+  // What Mancu reads for a question: the open document (or every document) and the sections that match it best.
+  const thinkFor = (text, docId) => {
+    const pool = docId ? docsRef.current.filter(d => d.id === docId) : docsRef.current.filter(d => d.versions.length);
+    const secs = kwSearch(text, pool).filter(h => h.s).slice(0, 3).map(h => h.s.title);
+    return { ctx: docId || '', label: docId && pool[0] ? pool[0].title : pool.length + ' dokumen', secs, phase: 0 };
+  };
+  // Reading steps advance on a timer while Gemini works; the answer replaces them whenever it arrives.
+  const startThink = () => {
+    stopThink();
+    timers.current.think = [700, 1700].map((ms, i) => setTimeout(() => set(p => p.think ? { think: { ...p.think, phase: i + 1 } } : {}), ms));
+  };
+  const stopThink = () => (timers.current.think || []).forEach(clearTimeout);
   const answer = (text, docId) => run('askMancu', text, docId || '')
     .then(a => a || localAnswer(text, docsRef.current))
     .catch(err => ({ error: true, intro: String((err && err.message) || 'Mancu sedang tidak tersedia. Coba lagi sebentar.').replace(/^(Error|Exception):\s*/, ''), items: [], note: '', sources: [] }));
   const ask = text => {
     text = (text || '').trim();
     if (!text) return;
-    const seq = ++askSeq.current;
-    set(p => ({ chatOpen: true, typing: true, draft: '', msgs: [...p.msgs, { user: true, text }] }));
-    answer(text, ctxDocId()).then(a => { if (seq === askSeq.current) set(p => ({ typing: false, msgs: [...p.msgs, aiMsg(a)] })); });
+    const seq = ++askSeq.current, ctx = ctxDocId();
+    set(p => ({ chatOpen: true, typing: true, think: thinkFor(text, ctx), draft: '', msgs: [...p.msgs, { user: true, text }] }));
+    startThink();
+    answer(text, ctx).then(a => { if (seq !== askSeq.current) return; stopThink(); set(p => ({ typing: false, think: null, msgs: [...p.msgs, aiMsg(a)] })); });
   };
   const askHome = text => {
     text = (text || '').trim();
     if (!text) { if (heroRef.current) heroRef.current.focus(); return; }
     const seq = ++askSeq.current;
-    set({ q: text, homeQ: text, homeAns: null, homeTyping: true, homeTab: 'mancu' });
-    answer(text).then(a => { if (seq === askSeq.current) set({ homeTyping: false, homeAns: aiMsg(a) }); });
+    set({ q: text, homeQ: text, homeAns: null, homeTyping: true, homeTab: 'mancu', think: thinkFor(text, '') });
+    startThink();
+    answer(text).then(a => { if (seq !== askSeq.current) return; stopThink(); set({ homeTyping: false, think: null, homeAns: aiMsg(a) }); });
   };
   const openSource = src => { set({ chatOpen: false }); openDoc(findDoc(src.docId), src.sec); };
 
@@ -267,7 +281,28 @@ function App() {
     return () => window.removeEventListener('scroll', onS);
   }, [s.step, s.docId, docs]);
 
-  useEffect(() => { if (bodyRef.current) bodyRef.current.scrollTop = bodyRef.current.scrollHeight; }, [s.msgs, s.typing]);
+  // A new answer shows from its start (with the question above it); anything else follows the bottom.
+  useEffect(() => {
+    const el = bodyRef.current;
+    if (!el) return;
+    const last = s.msgs[s.msgs.length - 1];
+    const answers = el.querySelectorAll('.msg-ai');
+    const node = last && last.ai && !s.typing && answers[answers.length - 1];
+    const from = node && node.previousElementSibling && node.previousElementSibling.classList.contains('msg-user') ? node.previousElementSibling : node;
+    el.scrollTop = from ? from.offsetTop - 16 : el.scrollHeight;
+  }, [s.msgs, s.typing]);
+
+  // Mancu answers only about the page it was asked on: leaving that page stops the answer.
+  useEffect(() => {
+    const cur = sRef.current;
+    if (!cur.typing || !cur.think || cur.think.ctx === ctxDocId()) return;
+    askSeq.current++;
+    stopThink();
+    set(p => ({ typing: false, think: null, msgs: [...p.msgs, { ai: true, error: true, intro: 'Halaman berubah, jadi jawaban dihentikan. Mancu hanya membaca dokumen yang sedang dibuka. Tanyakan lagi di halaman ini.', items: [], note: '', sources: [] }] }));
+  }, [s.step, s.docId]);
+
+  // Warm the server cache the first time the chat opens, so the first answer starts sooner.
+  useEffect(() => { if (s.chatOpen && !timers.current.warm) { timers.current.warm = true; run('warmMancu').catch(() => {}); } }, [s.chatOpen]);
 
   // ---- layout flags
   const xwide = vw >= 1200, wide = vw >= 1024, mid = vw >= 640;
@@ -277,7 +312,13 @@ function App() {
   const typingEl = html`<div className="typing"><span className="dot"></span>Mancu sedang membaca SOP…</div>`;
   const ctxDoc = s.step === 'reader' ? lib.find(d => d.id === s.docId) : null;
   const readable = lib.filter(d => d.versions.length).length;
-  const chatTyping = html`<div className="typing"><span className="dot"></span>Membaca ${ctxDoc ? ctxDoc.title : readable + ' dokumen'}…</div>`;
+  const thinking = t => t && html`
+    <div className="thinking" role="status" aria-live="polite">
+      ${['Membaca ' + t.label, t.secs.length ? 'Memeriksa ' + t.secs.join(', ') : 'Mencari bagian yang relevan', 'Menyusun jawaban'].slice(0, t.phase + 1).map((label, i) => html`
+        <div key=${i} className=${'think-step' + (i < t.phase ? ' done' : '')}>
+          <span className="mark">${i < t.phase ? I('check', 12) : html`<span className="dot"></span>`}</span><span>${label}${i < t.phase ? '' : '…'}</span>
+        </div>`)}
+    </div>`;
 
   // ================================================================= header
   const ql = s.q.trim().toLowerCase();
@@ -359,7 +400,7 @@ function App() {
           ${s.homeTab === 'mancu' && html`
             <div className="ans">
               <span className="ans-label"><span className="ic orange">${I('sparkles', 14)}</span>Mancu<span className="q">· “${s.homeQ}”</span></span>
-              ${s.homeTyping && typingEl}
+              ${s.homeTyping && (thinking(s.think) || typingEl)}
               ${ans && ans.error && html`<span className="ans-note">${ans.intro}</span>`}
               ${ans && !ans.error && html`
                 <span className="ans-intro">${ans.intro}</span>
@@ -683,7 +724,9 @@ function App() {
     </div>`;
 
   // ================================================================= drawer
-  const nextPrompts = s.typing ? [] : prompts.filter(p => !s.msgs.some(m => m.text === p));
+  // Example questions only on an empty chat, and on a document page only those it can answer.
+  const ctxDocNow = s.step === 'reader' ? lib.find(d => d.id === s.docId) : null;
+  const nextPrompts = s.typing || s.msgs.length ? [] : prompts.filter(p => !ctxDocNow || kwSearch(p, [ctxDocNow]).some(h => h.s && h.n >= 2));
   const width = clampW(drawerW);
   const startResize = e => {
     e.preventDefault();
@@ -720,7 +763,7 @@ function App() {
             ${loading ? 'Memuat dokumen…' : ctxDoc ? html`Membaca <b>${ctxDoc.title}</b>` : html`Membaca semua SOP · ${readable} dokumen`}
           </span>
         </div>
-        <button className="d-btn" title="Chat baru" aria-label="Chat baru" onClick=${() => { askSeq.current++; set({ msgs: [], typing: false }); }}>${I('rotate', 17)}</button>
+        <button className="d-btn" title="Chat baru" aria-label="Chat baru" onClick=${() => { askSeq.current++; stopThink(); set({ msgs: [], typing: false, think: null }); }}>${I('rotate', 17)}</button>
         <button className="d-btn" title="Tutup" aria-label="Tutup" onClick=${() => set({ chatOpen: false })}>${I('x', 19)}</button>
       </div>
       <div className="d-body" ref=${bodyRef}>
@@ -736,10 +779,10 @@ function App() {
                 ${m.sources.map(src => html`<button key=${src.label} className="src-chip" onClick=${() => openSource(src)}>${I('file', 13)}<span>${src.label}</span></button>`)}
               </div>`}
           </div>`)}
-        ${s.typing && chatTyping}
+        ${s.typing && thinking(s.think)}
         ${nextPrompts.length > 0 && html`
           <div className="prompt-list">
-            <span className="prompt-head">${s.msgs.length ? 'Pertanyaan lain' : 'Coba tanyakan'}</span>
+            <span className="prompt-head">Coba tanyakan</span>
             ${nextPrompts.map(p => html`<button key=${p} className="prompt-row" onClick=${() => ask(p)}><span className="t">${p}</span><span className="ic">${I('arrowUR', 15)}</span></button>`)}
           </div>`}
       </div>

@@ -238,11 +238,13 @@ function askMancu(question, docId) {
   if (hit) return JSON.parse(hit);
   countQuestion_(props);
 
+  // On a document page Mancu reads only that document; elsewhere it reads every published one.
   const all = cachedChunks_(cache, gen);
-  const chunks = pickChunks_(question, all, docId);
-  const active = docId && all.find(c => c.docId === docId);
+  const scope = docId ? all.filter(c => c.docId === docId) : all;
+  if (!scope.length) throw new Error('Dokumen ini belum bisa dibaca Mancu.');
+  const chunks = pickChunks_(question, scope);
   const context = chunks.map(c => '[' + c.id + '] ' + c.label + '\n' + c.text).join('\n\n---\n\n');
-  const focus = active ? 'DOKUMEN YANG SEDANG DIBUKA STAF: ' + active.head + '. Utamakan dokumen ini, tetapi boleh memakai dokumen lain bila jawabannya ada di sana.\n\n' : '';
+  const focus = docId ? 'Staf sedang membuka ' + scope[0].head + '. Jawab hanya dari dokumen ini; jika tidak ada, katakan jawabannya tidak ada di dokumen ini.\n\n' : '';
   let out;
   try {
     out = gemini_(key, SYSTEM_PROMPT, focus + 'DOKUMEN:\n\n' + context + '\n\nPERTANYAAN STAF:\n' + question, ANSWER_SCHEMA, 0.2);
@@ -263,6 +265,13 @@ function askMancu(question, docId) {
   };
   try { cache.put(ansKey, JSON.stringify(result), ANSWER_TTL); } catch (e) {}
   return result;
+}
+
+/** Called when the chat opens so the first question skips the spreadsheet read. */
+function warmMancu() {
+  const props = PropertiesService.getScriptProperties();
+  cachedChunks_(CacheService.getScriptCache(), props.getProperty('LIB_GEN') || '0');
+  return true;
 }
 
 /** Section chunks of every published document, cached so most questions skip the spreadsheet read. */
@@ -346,12 +355,12 @@ function chunks_(docs) {
 
 const STOP = 'apa yang harus jika dan untuk bagaimana berapa dari ada atau dengan saat tidak sudah pada ini itu bisa kalau mana kapan siapa'.split(' ');
 
-/** The open document's sections first, then the most relevant other chunks, within the context budget. */
-function pickChunks_(question, chunks, docId) {
+/** Most relevant chunks first, within the context budget. */
+function pickChunks_(question, chunks) {
   const words = question.toLowerCase().split(/[^a-z0-9]+/).filter(w => w.length >= 2 && STOP.indexOf(w) < 0);
   const scored = chunks.map(c => {
     const hay = (c.label + ' ' + c.keywords + ' ' + c.text).toLowerCase();
-    return { c: c, n: (c.docId === docId ? 100 : 0) + words.reduce((s, w) => s + (hay.indexOf(w) >= 0 ? 1 : 0), 0) };
+    return { c: c, n: words.reduce((s, w) => s + (hay.indexOf(w) >= 0 ? 1 : 0), 0) };
   }).sort((a, b) => b.n - a.n);
   const picked = [];
   let size = 0;
