@@ -1,0 +1,667 @@
+<script>
+(function () {
+'use strict';
+
+const { useState, useEffect, useRef } = React;
+const html = htm.bind(React.createElement);
+
+// ------------------------------------------------------------ icons (lucide, stroke 2)
+const P = {
+  search: ['m21 21-4.34-4.34', 'M11 3a8 8 0 1 0 0 16 8 8 0 0 0 0-16z'],
+  sparkles: ['M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z', 'M20 3v4', 'M22 5h-4'],
+  file: ['M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z', 'M14 2v4a2 2 0 0 0 2 2h4', 'M10 9H8', 'M16 13H8', 'M16 17H8'],
+  link: ['M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71', 'M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71'],
+  download: ['M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4', 'm7 10 5 5 5-5', 'M12 15V3'],
+  alert: ['m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3', 'M12 9v4', 'M12 17h.01'],
+  info: ['M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20z', 'M12 16v-4', 'M12 8h.01'],
+  send: ['M14.536 21.686a.5.5 0 0 0 .937-.024l6.5-19a.496.496 0 0 0-.635-.635l-19 6.5a.5.5 0 0 0-.024.937l7.93 3.18a2 2 0 0 1 1.112 1.11z', 'm21.854 2.147-10.94 10.939'],
+  check: ['M20 6 9 17l-5-5'],
+  chevR: ['m9 18 6-6-6-6'],
+  chevD: ['m6 9 6 6 6-6'],
+  x: ['M18 6 6 18', 'm6 6 12 12'],
+  home: ['M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8', 'M3 10a2 2 0 0 1 .709-1.528l7-5.999a2 2 0 0 1 2.582 0l7 5.999A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z'],
+  rotate: ['M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8', 'M3 3v5h5'],
+  arrowR: ['M5 12h14', 'm12 5 7 7-7 7'],
+  pen: ['M12 20h9', 'M16.376 3.622a1 1 0 0 1 3.002 3.002L7.368 18.635a2 2 0 0 1-.855.506l-2.872.838a.5.5 0 0 1-.62-.62l.838-2.872a2 2 0 0 1 .506-.854z'],
+  plus: ['M5 12h14', 'M12 5v14']
+};
+const I = (n, s = 20) => html`<svg width=${s} height=${s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style=${{ flexShrink: 0, display: 'block' }}>${P[n].map(d => html`<path key=${d} d=${d} />`)}</svg>`;
+const Logo = ({ mark, h }) => html`<span className="ic" dangerouslySetInnerHTML=${{ __html: mark
+  ? '<svg viewBox="0 0 217 239" height="' + h + '" style="display:block;height:' + h + 'px;width:auto" role="img" aria-label="Segari" xmlns="http://www.w3.org/2000/svg">' + MARK_PATHS + '</svg>'
+  : '<svg viewBox="0 20 940 386" height="' + h + '" style="display:block;height:' + h + 'px;width:auto" role="img" aria-label="Segari" xmlns="http://www.w3.org/2000/svg">' + LOGO_PATHS + '</svg>' }} />`;
+const initials = n => String(n).trim().split(/\s+/).slice(0, 2).map(w => w[0] || '').join('').toUpperCase();
+const Avatar = ({ name, size }) => html`<span className="avatar" title=${name} style=${{ width: size, height: size, fontSize: Math.round(size * .36) }}>${initials(name)}</span>`;
+
+// ------------------------------------------------------------ data helpers
+const USER = { name: 'Rina Saputri', first: 'Rina', role: 'Staf Gudang / TL' };
+const FLAGSHIP = 'inv007';
+const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
+const fmtDate = iso => { const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso || ''); return m ? Number(m[3]) + ' ' + MON[Number(m[2]) - 1] + ' ' + m[1] : '–'; };
+const todayIso = () => { const d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); };
+const TYPE_CODE = { sop: 'SOP', ik: 'IK', spec: 'Specbook', safety: 'SOP' };
+const typeOf = id => TYPES.find(t => t.id === id) || TYPES[0];
+const deptOf = id => DEPTS.find(d => d.id === id);
+const docTitle = d => d.user || d.id === FLAGSHIP ? d.title : d.code + ' - ' + d.title;
+const docVersions = d => d.full ? VERSIONS : d.versions || [{ rev: d.rev, date: d.date }];
+
+const SECS = SECTIONS.map(s => ({ ...s, blocks: s.blocks.map((b, j) => ({ ...b, aid: 'blk-' + s.id + '-' + j,
+  sub: b.kind === 'h' ? b.text : b.kind === 'table' ? b.caption : (b.kind === 'bad' || b.kind === 'warn') ? b.title : null })) }));
+
+/** A published article from the sheet, shaped like a catalogue document. */
+function articleToDoc(a) {
+  const vers = (a.versions || []).slice().sort((x, y) => y.rev - x.rev).map(v => ({ rev: v.rev, date: fmtDate(v.effectiveDate), note: v.note }));
+  const latest = vers[0] || { rev: 1, date: '–' };
+  return { id: 'a-' + a.id, code: TYPE_CODE[a.type] || 'SOP', title: a.title, short: a.title, type: a.type, depts: a.areas || [],
+    rev: latest.rev, date: latest.date, pages: null, applies: (a.areas || []).map(x => (deptOf(x) || {}).short).filter(Boolean).join(' · ') || '–',
+    body: a.body || '', keywords: a.keywords || [], versions: vers, user: true };
+}
+
+/** Splits free text into paragraphs and numbered step lists. */
+function bodyBlocks(body) {
+  return String(body).split(/\n\s*\n/).map(p => p.trim()).filter(Boolean).map(p => {
+    const lines = p.split('\n').map(l => l.trim()).filter(Boolean);
+    if (lines.every(l => /^\d+[.)]\s+/.test(l))) return { kind: 'steps', items: lines.map(l => ({ n: Number(/^\d+/.exec(l)[0]), text: l.replace(/^\d+[.)]\s+/, '') })) };
+    return { kind: 'p', text: p };
+  });
+}
+
+// ------------------------------------------------------------ search + Mancu
+const STOP = new Set('apa yang harus jika dan untuk bagaimana berapa dari ada atau dengan saat tidak sudah pada ini itu bisa kalau mana'.split(' '));
+const words = q => q.toLowerCase().split(/[^a-z0-9]+/).filter(w => w.length >= 3 && !STOP.has(w));
+const SEC_TEXT = SECS.map(sec => ({ sec, text: sec.blocks.map(b => [b.text, b.title, b.caption,
+  ...(b.items || []).map(i => typeof i === 'string' ? i : i.text),
+  ...(b.kind === 'kv' ? b.rows.map(r => r.v) : []),
+  ...(b.kind === 'table' ? b.rows.map(r => r.join(' ')) : [])].filter(Boolean).join(' ')).join(' ').toLowerCase() }));
+const docHay = d => (d.code + ' ' + d.title + ' ' + d.short + ' ' + (d.keywords || []).join(' ')).toLowerCase();
+
+function kwSearch(q, docs) {
+  const ws = words(q);
+  if (!ws.length) return [];
+  const secs = SEC_TEXT.map(x => ({ x, n: ws.filter(w => x.text.includes(w)).length })).filter(o => o.n).sort((a, b) => b.n - a.n).slice(0, 3).map(o => ({ sec: o.x.sec }));
+  const ds = docs.map(d => ({ d, n: ws.filter(w => docHay(d).includes(w)).length })).filter(o => o.n).sort((a, b) => b.n - a.n).slice(0, 5).map(o => ({ d: o.d }));
+  return [...secs, ...ds];
+}
+
+function answerFor(text, docs) {
+  const t = text.toLowerCase();
+  const key = /tumpuk|kardus|palet|pallet/.test(t) ? 'stack' : /defect|karantina|rusak|reject/.test(t) ? 'defect'
+    : /terlambat|telat|jam/.test(t) ? 'late' : /\bpo\b|purchase/.test(t) ? 'po' : null;
+  if (key) return { ...ANSWERS[key], sources: (ANSWERS[key].sources || []).map(s => ({ ...s, docId: FLAGSHIP })) };
+  // Fall back to documents whose title or Gemini keywords match the question.
+  const ws = words(text);
+  const hits = ws.length ? docs.map(d => ({ d, n: ws.filter(w => docHay(d).includes(w)).length })).filter(o => o.n).sort((a, b) => b.n - a.n).slice(0, 3) : [];
+  if (hits.length) return { intro: 'Saya menemukan dokumen yang paling relevan dengan pertanyaan ini:', items: hits.map(o => docTitle(o.d) + ' (' + o.d.code + ', Rev ' + o.d.rev + ').'),
+    note: 'Buka dokumennya untuk langkah lengkap.', sources: hits.map(o => ({ label: o.d.code + ' · ' + o.d.short, docId: o.d.id })) };
+  return ANSWERS.none;
+}
+
+// ------------------------------------------------------------ server bridge
+const hasServer = typeof google !== 'undefined' && google.script && google.script.run;
+const run = (fn, ...args) => new Promise((ok, fail) => {
+  if (!hasServer) return ok(null);
+  google.script.run.withSuccessHandler(ok).withFailureHandler(fail)[fn](...args);
+});
+
+function copyText(text) {
+  try { if (navigator.clipboard && window.isSecureContext) return navigator.clipboard.writeText(text); } catch (e) {}
+  const ta = document.createElement('textarea');
+  ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+  document.body.appendChild(ta); ta.select();
+  try { document.execCommand('copy'); } catch (e) {}
+  ta.remove();
+  return Promise.resolve();
+}
+
+// ------------------------------------------------------------ app
+const NEW_WRITER = () => ({ id: '', title: '', type: 'sop', areas: [], body: '', versions: [{ rev: 1, date: todayIso(), note: 'Rilis pertama' }], kw: [], kwDraft: '' });
+const KW_SUGGEST = ['inbound', 'supplier', 'PO', 'karantina', 'defect', 'expired date', 'FEFO', 'putaway'];
+
+function App() {
+  const [s, setS] = useState({
+    step: 'home', homeView: 'search', type: 'sop', dept: null, docId: null, rev: null, active: 'umum', verOpen: false, anim: true,
+    q: '', focus: null, homeQ: null, homeAns: null, homeTyping: false, homeTab: 'mancu', browseQ: '',
+    chatOpen: false, msgs: [], typing: false, draft: '', toast: null, w: NEW_WRITER(), saving: false
+  });
+  const set = patch => setS(p => ({ ...p, ...(typeof patch === 'function' ? patch(p) : patch) }));
+  const [articles, setArticles] = useState([]);
+  const [vw, setVw] = useState(window.innerWidth);
+  const hdrRef = useRef(), heroRef = useRef(), browseRef = useRef(), headRef = useRef(), bodyRef = useRef();
+  const timers = useRef({});
+  const sRef = useRef(s); sRef.current = s;
+
+  const docs = [...DOCS, ...articles.map(articleToDoc)];
+  const docsRef = useRef(docs); docsRef.current = docs;
+  const findDoc = id => docsRef.current.find(d => d.id === id);
+
+  // ---- navigation
+  const go = (patch, after) => {
+    set({ ...patch, anim: false, verOpen: false });
+    window.scrollTo({ top: 0 });
+    requestAnimationFrame(() => requestAnimationFrame(() => { set({ anim: true }); if (after) after(); }));
+  };
+  const hdrH = () => (hdrRef.current ? hdrRef.current.offsetHeight : 65);
+  const scrollToSec = id => { const el = document.getElementById('sec-' + id); if (el) window.scrollTo({ top: el.getBoundingClientRect().top + window.scrollY - hdrH() - 75, behavior: 'smooth' }); set({ active: id }); };
+  const scrollToEl = id => { const el = document.getElementById(id); if (el) window.scrollTo({ top: el.getBoundingClientRect().top + window.scrollY - hdrH() - 45, behavior: 'smooth' }); };
+  const openDoc = (d, sec) => {
+    if (!d) return;
+    const cur = sRef.current;
+    const dept = d.depts.includes(cur.dept) ? cur.dept : d.depts[0] || null;
+    go({ step: 'reader', docId: d.id, type: d.type, dept, rev: d.rev, active: 'umum', q: '' }, sec ? () => setTimeout(() => scrollToSec(sec), 320) : null);
+    if (hasServer) google.script.history.replace(null, { doc: d.id });
+  };
+  const goHome = () => { go({ step: 'home', homeView: 'search', docId: null, q: '', homeQ: null, homeAns: null, homeTyping: false }); if (hasServer) google.script.history.replace(null, {}); };
+  const goBrowse = () => go({ step: 'home', homeView: 'browse', docId: null });
+  const flash = t => { clearTimeout(timers.current.toast); set({ toast: t }); timers.current.toast = setTimeout(() => set({ toast: null }), 2200); };
+
+  // ---- Mancu
+  const aiMsg = a => ({ ai: true, intro: a.intro, items: a.items, note: a.note, sources: a.sources || [] });
+  const ask = text => {
+    text = (text || '').trim();
+    if (!text) return;
+    set(p => ({ chatOpen: true, typing: true, draft: '', msgs: [...p.msgs, { user: true, text }] }));
+    clearTimeout(timers.current.ask);
+    timers.current.ask = setTimeout(() => set(p => ({ typing: false, msgs: [...p.msgs, aiMsg(answerFor(text, docsRef.current))] })), 1100);
+  };
+  const askHome = text => {
+    text = (text || '').trim();
+    if (!text) { if (heroRef.current) heroRef.current.focus(); return; }
+    clearTimeout(timers.current.home);
+    set({ q: text, homeQ: text, homeAns: null, homeTyping: true, homeTab: 'mancu' });
+    timers.current.home = setTimeout(() => set({ homeTyping: false, homeAns: answerFor(text, docsRef.current) }), 900);
+  };
+  const openSource = src => { set({ chatOpen: false }); openDoc(findDoc(src.docId || FLAGSHIP), src.sec); };
+
+  // ---- effects
+  useEffect(() => {
+    const onR = () => setVw(window.innerWidth);
+    const onK = e => {
+      const tag = e.target.tagName, cur = sRef.current;
+      if (e.key === '/' && tag !== 'INPUT' && tag !== 'TEXTAREA') {
+        const r = cur.step === 'home' ? (cur.homeView === 'search' ? heroRef : browseRef) : headRef;
+        if (r.current) { e.preventDefault(); r.current.focus(); }
+      } else if (e.key === 'Escape') {
+        if (tag === 'INPUT' || tag === 'TEXTAREA') e.target.blur();
+        else if (cur.chatOpen) set({ chatOpen: false });
+        else if (cur.verOpen) set({ verOpen: false });
+      }
+    };
+    window.addEventListener('resize', onR);
+    window.addEventListener('keydown', onK);
+    const ro = new ResizeObserver(() => document.documentElement.style.setProperty('--hdr', hdrH() + 'px'));
+    if (hdrRef.current) ro.observe(hdrRef.current);
+    run('getArticles').then(list => {
+      if (list) setArticles(list);
+      if (hasServer) google.script.url.getLocation(loc => { const id = loc.parameter.doc; const d = id && docsRef.current.find(x => x.id === id); if (d) openDoc(d); });
+    }).catch(() => {});
+    return () => { window.removeEventListener('resize', onR); window.removeEventListener('keydown', onK); ro.disconnect(); };
+  }, []);
+
+  useEffect(() => {
+    const doc = findDoc(s.docId);
+    if (s.step !== 'reader' || !doc || !doc.full) return;
+    const onS = () => {
+      let act = SECS[0].id;
+      for (const x of SECS) { const el = document.getElementById('sec-' + x.id); if (el && el.getBoundingClientRect().top < hdrH() + 100) act = x.id; }
+      if (act !== sRef.current.active) set({ active: act });
+    };
+    window.addEventListener('scroll', onS, { passive: true });
+    return () => window.removeEventListener('scroll', onS);
+  }, [s.step, s.docId]);
+
+  useEffect(() => { if (bodyRef.current) bodyRef.current.scrollTop = bodyRef.current.scrollHeight; }, [s.msgs, s.typing]);
+
+  // ---- layout flags
+  const xwide = vw >= 1200, wide = vw >= 1024, mid = vw >= 640;
+  const showHeaderSearch = s.step === 'list' || s.step === 'reader';
+  const isWriter = s.step === 'writer';
+
+  // ================================================================= header
+  const ql = s.q.trim().toLowerCase();
+  const searchHits = ql ? docs.filter(d => docHay(d).includes(ql)).slice(0, 5) : [];
+  const header = html`
+    <header className="hdr" ref=${hdrRef}>
+      <div className="hdr-in">
+        <button className="brand" onClick=${goHome} aria-label="Beranda Segari Knowledge Base">
+          <${Logo} mark=${!mid} h=${30} />
+          ${mid && html`<span className="brand-t"><b>Segari Knowledge Base</b><span>Dokumentasi gudang</span></span>`}
+        </button>
+        ${showHeaderSearch && html`
+          <div className="hdr-mid">
+            <div className=${'hsearch' + (s.focus === 'head' ? ' focus' : '')}>
+              ${I('search')}
+              <input ref=${headRef} value=${s.q} placeholder="Cari dokumen atau tanya Mancu…" aria-label="Cari dokumen atau tanya Mancu"
+                onChange=${e => set({ q: e.target.value })} onFocus=${() => set({ focus: 'head' })}
+                onBlur=${() => setTimeout(() => set(p => p.focus === 'head' ? { focus: null } : {}), 120)}
+                onKeyDown=${e => { if (e.key === 'Enter' && s.q.trim()) { ask(s.q); set({ q: '' }); e.target.blur(); } }} />
+              <button className="btn-ask" onMouseDown=${e => { e.preventDefault(); if (s.q.trim()) { ask(s.q); set({ q: '' }); } else set({ chatOpen: true }); }}>
+                <span className="orange">${I('sparkles', 18)}</span>${mid && html`<span>Tanya Mancu</span>`}
+              </button>
+            </div>
+            ${s.focus === 'head' && ql && html`
+              <div className="pop" role="listbox">
+                <div className="eyebrow">Dokumen</div>
+                ${searchHits.map(d => html`
+                  <button key=${d.id} className="pop-row" onMouseDown=${e => { e.preventDefault(); headRef.current.blur(); openDoc(d); }}>
+                    <span className="ic muted">${I('file')}</span>
+                    <span className="t"><b>${d.title}</b><span>${d.code} · ${d.applies}</span></span>
+                  </button>`)}
+                ${!searchHits.length && html`<div className="pop-empty">Tidak ada dokumen yang cocok.</div>`}
+                <button className="pop-ask" onMouseDown=${e => { e.preventDefault(); ask(s.q); set({ q: '' }); headRef.current.blur(); }}>
+                  ${I('sparkles', 18)}<span>Tanya Mancu: “${s.q.trim()}”</span>
+                </button>
+              </div>`}
+          </div>`}
+        <div className="hdr-right">
+          <button className=${'btn-writer' + (isWriter ? ' on' : '')} title=${isWriter ? 'Keluar mode penulis' : 'Mode penulis'}
+            onClick=${() => isWriter ? goHome() : go({ step: 'writer' })}>
+            ${I('pen', 16)}${mid && html`<span>${isWriter ? 'Keluar mode penulis' : 'Mode penulis'}</span>`}
+          </button>
+          <${Avatar} name=${USER.name} size=${38} />
+          ${vw >= 900 && html`<span className="user-t"><b>${USER.name}</b><span>${USER.role}</span></span>`}
+        </div>
+      </div>
+    </header>`;
+
+  // ================================================================= home
+  const kwRes = s.homeQ ? kwSearch(s.homeQ, docs).map(r => r.sec
+    ? { key: 'sec-' + r.sec.id, title: r.sec.title, meta: 'SOP-DC-INV-007 · Inbound Supplier · Rev 11', open: () => openDoc(findDoc(FLAGSHIP), r.sec.id) }
+    : { key: r.d.id, title: r.d.title, meta: r.d.code + ' · ' + r.d.applies + ' · Rev ' + r.d.rev, open: () => openDoc(r.d) }) : [];
+  const ans = s.homeAns;
+
+  const homeSearch = html`
+    <div>
+      <div className="hero" style=${{ paddingTop: s.homeQ ? 40 : '15vh' }}>
+        <h1 className="page-title">Cari apa hari ini?</h1>
+        <div className=${'hero-bar' + (s.focus === 'hero' ? ' focus' : '')}>
+          ${I('search')}
+          <input ref=${heroRef} value=${s.q} placeholder="Tanya Mancu atau cari dokumen…" aria-label="Tanya Mancu atau cari dokumen"
+            onChange=${e => { const v = e.target.value; if (!v) { clearTimeout(timers.current.home); set({ q: v, homeQ: null, homeAns: null, homeTyping: false }); } else set({ q: v }); }}
+            onFocus=${() => set({ focus: 'hero' })} onBlur=${() => set(p => p.focus === 'hero' ? { focus: null } : {})}
+            onKeyDown=${e => { if (e.key === 'Enter') { askHome(s.q); e.target.blur(); } }} />
+          ${!s.q && html`<span className="keycap" title="Tekan / untuk mencari">/</span>`}
+          ${s.q && html`<button className="icon-btn" title="Hapus" aria-label="Hapus" onMouseDown=${e => { e.preventDefault(); clearTimeout(timers.current.home); set({ q: '', homeQ: null, homeAns: null, homeTyping: false }); }}>${I('x', 18)}</button>`}
+          <button className="spark-btn" title="Tanya Mancu" aria-label="Tanya Mancu" onMouseDown=${e => { e.preventDefault(); askHome(s.q); }}>${I('sparkles', 22)}</button>
+        </div>
+        ${!s.homeQ && html`
+          <div className="examples">
+            <span className="eyebrow">Coba tanya</span>
+            ${PROMPTS.map(p => html`<button key=${p} className="ex-link" onClick=${() => askHome(p)}>${p}</button>`)}
+          </div>`}
+      </div>
+      ${s.homeQ && html`
+        <div className="results">
+          <div className="tabs sm" role="tablist">
+            <button role="tab" className=${'tab' + (s.homeTab === 'mancu' ? ' on' : '')} onClick=${() => set({ homeTab: 'mancu' })}><span>Jawaban Mancu</span></button>
+            <button role="tab" className=${'tab' + (s.homeTab === 'kw' ? ' on' : '')} onClick=${() => set({ homeTab: 'kw' })}><span>Hasil kata kunci</span><span className="n">${kwRes.length}</span></button>
+          </div>
+          ${s.homeTab === 'mancu' && html`
+            <div className="ans">
+              <span className="ans-label"><span className="ic orange">${I('sparkles', 14)}</span>Mancu<span className="q">· “${s.homeQ}”</span></span>
+              ${s.homeTyping && html`<div className="typing"><span className="dot"></span>Mancu sedang membaca SOP…</div>`}
+              ${ans && html`
+                <span className="ans-intro">${ans.intro}</span>
+                <ol className="numlist">${ans.items.map((t, i) => html`<li key=${i}><span>${i + 1}.</span><span>${t}</span></li>`)}</ol>
+                ${ans.note && html`<span className="ans-note">${ans.note}</span>`}
+                ${ans.sources && ans.sources.length > 0 && html`
+                  <div className="src-links">
+                    <span className="eyebrow">Sumber</span>
+                    ${ans.sources.map(src => html`<button key=${src.label} className="src-link" onClick=${() => openSource(src)}><span>${src.label}</span>${I('arrowR', 16)}</button>`)}
+                  </div>`}
+                <div className="ans-foot">
+                  <button className="link-strong" onClick=${() => set({ chatOpen: true, msgs: [{ user: true, text: s.homeQ }, aiMsg(ans)] })}><span>Lanjutkan di chat</span>${I('arrowR', 16)}</button>
+                  <span className="disclaimer">Mancu bisa salah. Pastikan langkah kritis sesuai SOP yang dikutip.</span>
+                </div>`}
+            </div>`}
+          ${s.homeTab === 'kw' && html`
+            <div className="hl-list" style=${{ paddingTop: 8 }}>
+              ${kwRes.map(r => html`<button key=${r.key} className="hl-row" onClick=${r.open}><b>${r.title}</b><span>${r.meta}</span></button>`)}
+              ${!kwRes.length && html`<span className="empty">Tidak ada dokumen dengan kata kunci ini.</span>`}
+            </div>`}
+        </div>`}
+    </div>`;
+
+  const bq = s.browseQ.trim().toLowerCase();
+  const browseHits = bq ? docs.filter(d => (d.code + ' ' + d.title + ' ' + d.short).toLowerCase().includes(bq)) : [];
+  const countFor = (type, dept) => docs.filter(d => d.type === type && (!dept || d.depts.includes(dept))).length;
+  const homeBrowse = html`
+    <div className="browse">
+      <h1 className="page-title">Jelajahi dokumen</h1>
+      <div className=${'field-search' + (s.focus === 'browse' ? ' focus' : '')}>
+        ${I('search', 16)}
+        <input ref=${browseRef} value=${s.browseQ} placeholder="Cari judul atau kode dokumen…" aria-label="Cari judul atau kode dokumen"
+          onChange=${e => set({ browseQ: e.target.value })} onFocus=${() => set({ focus: 'browse' })} onBlur=${() => set(p => p.focus === 'browse' ? { focus: null } : {})} />
+        ${bq && html`<button className="icon-btn" title="Hapus" aria-label="Hapus" onClick=${() => set({ browseQ: '' })}>${I('x', 18)}</button>`}
+      </div>
+      ${bq ? html`
+        <div className="hl-list">
+          <span style=${{ fontSize: 13, color: 'var(--muted)', paddingBottom: 4 }}>${browseHits.length ? browseHits.length + ' dokumen' : 'Tidak ada dokumen yang cocok.'}</span>
+          ${browseHits.map(d => html`<button key=${d.id} className="hl-row" onClick=${() => openDoc(d)}><b>${d.title}</b><span>${d.code} · ${typeOf(d.type).short} · ${d.applies} · Rev ${d.rev}</span></button>`)}
+        </div>` : html`
+        <div style=${{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+          <div className="pills">
+            ${TYPES.map(t => html`<button key=${t.id} className=${'pill' + (s.type === t.id ? ' on' : '')} onClick=${() => set({ type: t.id })}><span>${t.short}</span><span className="n">${countFor(t.id)}</span></button>`)}
+          </div>
+          <p style=${{ fontSize: 15, color: 'var(--sec2)' }}>${typeOf(s.type).desc}</p>
+          <div className="area-list">
+            ${DEPTS.map(d => { const c = countFor(s.type, d.id); return html`
+              <button key=${d.id} className="area-row" disabled=${!c} onClick=${() => go({ step: 'list', dept: d.id })}>
+                <b>${d.label}</b><span>${c ? c + ' dokumen' : 'Belum ada dokumen'}</span><i>${I('chevR', 18)}</i>
+              </button>`; })}
+          </div>
+        </div>`}
+    </div>`;
+
+  const home = html`
+    <div>
+      <nav className="tabs center" role="tablist">
+        <button role="tab" className=${'tab' + (s.homeView === 'search' ? ' on' : '')} onClick=${() => set({ homeView: 'search' })}>Cari</button>
+        <button role="tab" className=${'tab' + (s.homeView === 'browse' ? ' on' : '')} onClick=${() => set({ homeView: 'browse' })}>Jelajahi dokumen</button>
+      </nav>
+      ${s.homeView === 'search' ? homeSearch : homeBrowse}
+    </div>`;
+
+  // ================================================================= list
+  const typeObj = typeOf(s.type), deptObj = deptOf(s.dept);
+  const listDocs = docs.filter(d => d.type === s.type && d.depts.includes(s.dept));
+  const list = html`
+    <div style=${{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+      <nav className="crumbs" aria-label="Breadcrumb">
+        <button className="crumb" onClick=${goHome}>${I('home', 16)}<span>Beranda</span></button><span className="sep">›</span>
+        <button className="crumb" onClick=${goBrowse}>${typeObj.short}</button><span className="sep">›</span>
+        <span className="crumb-pill">${deptObj ? deptObj.short : '–'}</span>
+      </nav>
+      <div className="list-head">
+        <div style=${{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+          <span className="eyebrow lg">${typeObj.long}</span>
+          <h1>${deptObj ? deptObj.label : '–'}</h1>
+        </div>
+        <span style=${{ fontSize: 14, color: 'var(--sec2)' }}>${listDocs.length} dokumen</span>
+      </div>
+      <div className="doc-rows">
+        ${listDocs.map(d => html`
+          <button key=${d.id} className="doc-row" onClick=${() => openDoc(d)}>
+            <span className="tile">${I('file')}</span>
+            <span className="t"><b>${docTitle(d)}</b><span className="meta"><span className="code">${d.code}</span><span>Rev ${d.rev} · Berlaku ${d.date}${d.pages ? ' · ' + d.pages + ' halaman' : ''}</span></span></span>
+            <i>${I('chevR', 18)}</i>
+          </button>`)}
+      </div>
+    </div>`;
+
+  // ================================================================= reader
+  const reader = () => {
+    const doc = findDoc(s.docId) || findDoc(FLAGSHIP);
+    const docT = typeOf(doc.type), dDept = deptOf(s.dept) || deptOf(doc.depts[0]) || DEPTS[0];
+    const vers = docVersions(doc), viewV = vers.find(v => v.rev === s.rev) || vers[0];
+    const isCurrent = s.rev === doc.rev;
+    const showToc = !!doc.full;
+    const toc = SECS.map(x => { const m = x.label.match(/^([A-E])\. (.*)$/); return { id: x.id, num: m ? m[1] : '·', name: m ? m[2] : x.label, label: x.label, on: x.id === s.active,
+      subs: x.blocks.filter(b => b.sub).map(b => ({ aid: b.aid, label: b.sub.replace(/^\d+\. /, '') })) }; });
+    const sideDocs = docs.filter(d => d.depts.includes(dDept.id));
+    const cols = [xwide ? '280px' : null, 'minmax(0, 1fr)', showToc && wide ? '300px' : null].filter(Boolean).join(' ');
+    const block = b => {
+      switch (b.kind) {
+        case 'h': return html`<h3>${b.text}</h3>`;
+        case 'p': return html`<p className="prose">${b.text}</p>`;
+        case 'kv': return html`<div className="kv">${b.rows.map(r => html`<p key=${r.k} className="prose"><strong>${r.k}.</strong> ${r.v}</p>`)}</div>`;
+        case 'steps': return html`<ol className="steps">${b.items.map(it => html`<li key=${it.n}><span>${it.n}.</span><span>${it.text}</span></li>`)}</ol>`;
+        case 'table': return html`
+          <div className="tbl"><b>${b.caption}</b>
+            <div className="tbl-scroll"><table>
+              <thead><tr>${b.head.map(h => html`<th key=${h}>${h}</th>`)}</tr></thead>
+              <tbody>${b.rows.map((r, i) => html`<tr key=${i}>${r.map((c, j) => html`<td key=${j} style=${{ whiteSpace: j === 0 || c.length < 16 ? 'nowrap' : 'normal' }}>${c}</td>`)}</tr>`)}</tbody>
+            </table></div>
+          </div>`;
+        case 'bad': return html`
+          <div className="callout bad"><span className="ic">${I('alert', 24)}</span>
+            <div className="body"><span className="eyebrow">Langkah kritis</span><span className="t">${b.title}</span><span className="x">${b.text}</span>
+              <ul className="arrows">${b.items.map(li => html`<li key=${li}><span>→</span><span>${li}</span></li>`)}</ul>
+            </div>
+          </div>`;
+        case 'warn': return html`
+          <div className="callout warn"><span className="ic">${I('info', 24)}</span>
+            <div className="body"><span className="t">${b.title}</span><span className="x">${b.text}</span></div>
+          </div>`;
+      }
+      return null;
+    };
+    const tocRow = t => html`
+      <div key=${t.id} style=${{ display: 'flex', flexDirection: 'column' }}>
+        <button className=${'toc-row' + (t.on ? ' on' : '')} onClick=${() => scrollToSec(t.id)}><span className="n">${t.num}</span><span>${t.name}</span></button>
+        ${t.on && t.subs.map(u => html`<button key=${u.aid} className="toc-sub" onClick=${() => scrollToEl(u.aid)}>${u.label}</button>`)}
+      </div>`;
+    const deepLink = (window.APP_URL || location.href.split('?')[0].split('#')[0]) + '?doc=' + encodeURIComponent(doc.id);
+
+    return html`
+      <div className="reader-grid" style=${{ gridTemplateColumns: cols }}>
+        ${xwide && html`
+          <div className="leftnav"><nav aria-label="Dokumen di area ini">
+            <span className="eyebrow">${dDept.label}</span>
+            ${sideDocs.map(d => html`<button key=${d.id} className=${'side-doc' + (d.id === doc.id ? ' on' : '')} onClick=${() => d.id !== doc.id && openDoc(d)}><b>${d.title}</b><span>${typeOf(d.type).short}</span></button>`)}
+            <button className="side-all" onClick=${() => go({ step: 'list', dept: dDept.id, type: doc.type })}>‹ Semua dokumen</button>
+          </nav></div>`}
+        <article className="article" style=${{ padding: wide ? '28px 56px 80px' : mid ? '24px 32px 60px' : undefined }}>
+          <div className="article-in">
+            <nav className="crumbs" aria-label="Breadcrumb" style=${{ marginBottom: 20 }}>
+              <button className="crumb" onClick=${goHome} aria-label="Beranda" style=${{ width: 36, justifyContent: 'center', padding: 0 }}>${I('home', 18)}</button><span className="sep">›</span>
+              <button className="crumb" onClick=${() => go({ step: 'home', homeView: 'browse', type: doc.type, docId: null })}>${docT.short}</button><span className="sep">›</span>
+              <button className="crumb" onClick=${() => go({ step: 'list', dept: dDept.id, type: doc.type })}>${dDept.short}</button><span className="sep">›</span>
+              <span className="crumb-pill">${doc.short}</span>
+            </nav>
+            <span className="eyebrow lg">${docT.long}</span>
+            <h1 className="r-title">${docTitle(doc)}</h1>
+            <div className="r-meta">
+              <span className="code">${doc.id === FLAGSHIP || doc.user ? doc.code : doc.code + ' · ' + doc.short}</span>
+              <span className="dotsep">·</span><span>Berlaku ${viewV ? viewV.date : doc.date}</span><span className="dotsep">·</span>
+              <span className="rev-wrap">
+                <button className="rev-btn" aria-haspopup="listbox" aria-expanded=${s.verOpen} onClick=${() => set({ verOpen: !s.verOpen })}>
+                  <span>Rev ${s.rev}</span><span className=${'rev-pill' + (isCurrent ? '' : ' old')}>${isCurrent ? 'Terbaru' : 'Lama'}</span><span className="ic muted">${I('chevD', 16)}</span>
+                </button>
+                ${s.verOpen && html`
+                  <div className="rev-pop" role="listbox">
+                    <div className="eyebrow">Riwayat versi</div>
+                    ${vers.map(v => html`
+                      <button key=${v.rev} className=${'rev-opt' + (v.rev === s.rev ? ' on' : '')} onClick=${() => set({ rev: v.rev, verOpen: false })}>
+                        <span className="t"><b>Rev ${v.rev}</b><span>Berlaku ${v.date}</span></span>
+                        <span className=${'tag' + (v.rev === doc.rev ? ' new' : '')}>${v.rev === doc.rev ? 'Terbaru' : 'Lama'}</span>
+                      </button>`)}
+                  </div>`}
+              </span>
+              ${doc.pages && html`<span className="dotsep">·</span><span>${doc.pages} halaman</span>`}
+              <span className="dotsep">·</span><span>Berlaku untuk ${doc.applies}</span>
+            </div>
+            <div className="r-actions">
+              <button className="btn" onClick=${() => copyText(deepLink).then(() => flash('Link disalin'))}>${I('link', 18)}<span>Salin link</span></button>
+              <button className="btn primary" onClick=${() => window.print()}>${I('download', 18)}<span>Unduh PDF</span></button>
+            </div>
+            ${!isCurrent && html`
+              <div className="old-banner"><span className="ic">${I('alert')}</span>
+                <span>Anda sedang melihat Rev ${s.rev} yang sudah tidak berlaku. Gunakan Rev ${doc.rev} untuk operasional harian.</span>
+                <button onClick=${() => set({ rev: doc.rev })}>Lihat versi terbaru</button>
+              </div>`}
+            ${showToc && !wide && html`
+              <div className="chip-toc">${toc.map(t => html`<button key=${t.id} className=${'chip' + (t.on ? ' on' : '')} onClick=${() => scrollToSec(t.id)}>${t.label}</button>`)}</div>`}
+            ${doc.full ? html`
+              ${SECS.map(sec => html`
+                <section key=${sec.id} id=${'sec-' + sec.id} className="sec">
+                  <h2>${sec.title}</h2>
+                  ${sec.blocks.map(b => html`<div key=${b.aid} id=${b.aid} className="blk">${block(b)}</div>`)}
+                </section>`)}
+              <section className="signoff">
+                <span className="eyebrow lg">Persetujuan dokumen</span>
+                <div className="signoff-grid">
+                  ${SIGNOFF.map(g => html`
+                    <div key=${g.label} className="signoff-col"><b>${g.label}</b>
+                      ${g.people.map(p => html`<span key=${p.name} className="person"><${Avatar} name=${p.name} size=${32} /><span className="user-t"><b>${p.name}</b><span>${p.role}</span></span></span>`)}
+                    </div>`)}
+                </div>
+              </section>` : doc.user ? html`
+              <section className="sec">${bodyBlocks(doc.body).map((b, i) => html`<div key=${i} className="blk">${block(b)}</div>`)}
+                ${!doc.body.trim() && html`<p className="prose muted">–</p>`}
+              </section>` : html`
+              <div className="notfull">
+                <b>Belum didigitalkan</b>
+                <p className="prose">File sumber dokumen ini belum dikonversi ke tampilan baca. Unduh PDF-nya, atau tanya Mancu. Mancu sudah terindeks ke dokumen aslinya.</p>
+                <button className="btn accent" onClick=${() => set({ chatOpen: true })}>${I('sparkles', 18)}<span>Tanya Mancu tentang dokumen ini</span></button>
+              </div>`}
+          </div>
+        </article>
+        ${showToc && wide && html`
+          <div className="sidetoc"><aside>
+            <span className="eyebrow">Di halaman ini</span>
+            <div className="toc">${toc.map(tocRow)}</div>
+            <button className="ask-card" onClick=${() => set({ chatOpen: true })}>
+              <span className="spark-tile" style=${{ width: 28, height: 28 }}>${I('sparkles', 14)}</span>
+              <span className="t"><b>Tanya Mancu tentang SOP ini</b><span>Setiap jawaban menyebut bagian sumbernya.</span></span>
+            </button>
+          </aside></div>`}
+      </div>`;
+  };
+
+  // ================================================================= writer
+  const w = s.w;
+  const setW = patch => set(p => ({ w: { ...p.w, ...(typeof patch === 'function' ? patch(p.w) : patch) } }));
+  const addKw = t => setW(x => { t = String(t).trim(); return { kw: t && !x.kw.some(k => k.toLowerCase() === t.toLowerCase()) ? [...x.kw, t] : x.kw, kwDraft: '' }; });
+  const setVer = (i, patch) => setW(x => ({ versions: x.versions.map((v, j) => j === i ? { ...v, ...patch } : v) }));
+  const kwSuggest = KW_SUGGEST.filter(k => !w.kw.some(x => x.toLowerCase() === k.toLowerCase())).slice(0, 5);
+  const payload = () => ({ id: w.id, title: w.title.trim(), type: w.type, areas: w.areas, body: w.body,
+    versions: w.versions.map(v => ({ rev: v.rev, effectiveDate: v.date, note: v.note })), keywords: w.kw });
+  const save = status => {
+    if (status === 'published' && !w.title.trim()) { flash('Isi judul artikel dulu'); return; }
+    if (s.saving) return;
+    set({ saving: true });
+    run('saveArticle', payload(), status).then(res => {
+      const rev = w.versions[w.versions.length - 1].rev;
+      if (status === 'published') {
+        const a = res || { ...payload(), id: 'lokal-' + Date.now(), status: 'published' };
+        setArticles(list => [a, ...list.filter(x => x.id !== a.id)]);
+        set({ saving: false, w: NEW_WRITER() });
+        flash('Diterbitkan · Rev ' + rev);
+        goHome();
+      } else {
+        set(p => ({ saving: false, w: { ...p.w, id: res ? res.id : p.w.id } }));
+        flash('Draf disimpan');
+      }
+    }).catch(err => { set({ saving: false }); flash((err && err.message) || 'Gagal menyimpan'); });
+  };
+  const writer = html`
+    <div className="writer">
+      <div style=${{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        <span className="eyebrow lg">Mode penulis</span>
+        <h1 className="page-title">Tulis artikel</h1>
+      </div>
+      <section className="w-sec">
+        <div className="w-head"><span className="n">1</span><b>Artikel</b></div>
+        <label className="field"><span>Judul</span>
+          <input className="input" value=${w.title} placeholder="mis. Handling Ice Cream" onChange=${e => setW({ title: e.target.value })} />
+        </label>
+        <div className="field"><span>Jenis dokumen</span>
+          <div className="pills">${TYPES.map(t => html`<button key=${t.id} className=${'pill sm' + (w.type === t.id ? ' on' : '')} aria-pressed=${w.type === t.id} onClick=${() => setW({ type: t.id })}>${t.short}</button>`)}</div>
+        </div>
+        <div className="field"><span>Area</span>
+          <div className="pills">${DEPTS.map(d => { const on = w.areas.includes(d.id); return html`<button key=${d.id} className=${'pill sm tint' + (on ? ' on' : '')} aria-pressed=${on}
+            onClick=${() => setW(x => ({ areas: on ? x.areas.filter(a => a !== d.id) : [...x.areas, d.id] }))}>${d.short}</button>`; })}</div>
+        </div>
+        <label className="field"><span>Isi artikel</span>
+          <textarea className="textarea" value=${w.body} placeholder="Tulis prosedur langkah demi langkah…" onChange=${e => setW({ body: e.target.value })}></textarea>
+        </label>
+      </section>
+      <section className="w-sec" style=${{ gap: 14 }}>
+        <div className="w-head"><span className="n">2</span><b>Versi</b>
+          <button className="text-btn" onClick=${() => setW(x => ({ versions: [...x.versions, { rev: Math.max(...x.versions.map(v => v.rev)) + 1, date: todayIso(), note: '' }] }))}>${I('plus', 16)}<span>Tambah versi</span></button>
+        </div>
+        ${w.versions.map((v, i) => { const latest = i === w.versions.length - 1; return html`
+          <div key=${v.rev} className="ver-row">
+            <span className="ver-rev"><b>Rev ${v.rev}</b><span className=${latest ? 'new' : ''}>${latest ? 'Terbaru' : 'Lama'}</span></span>
+            <input className="input sm" type="date" value=${v.date} title="Tanggal berlaku" aria-label="Tanggal berlaku" onChange=${e => setVer(i, { date: e.target.value })} />
+            <input className="input sm note" value=${v.note} placeholder="Catatan perubahan" aria-label="Catatan perubahan" onChange=${e => setVer(i, { note: e.target.value })} />
+            <button className="ver-rm" title="Hapus versi" aria-label="Hapus versi" hidden=${w.versions.length < 2}
+              onClick=${() => setW(x => x.versions.length > 1 ? { versions: x.versions.filter((_, j) => j !== i) } : {})}>${I('x', 18)}</button>
+          </div>`; })}
+      </section>
+      <section className="w-sec" style=${{ gap: 14 }}>
+        <div className="w-head"><span className="n">3</span><b>Kata kunci untuk Gemini</b></div>
+        <span className="helper">Istilah yang dipakai staf saat bertanya. Tekan Enter untuk menambah.</span>
+        <div className=${'tagbox' + (s.focus === 'kw' ? ' focus' : '')} onClick=${e => { const inp = e.currentTarget.querySelector('input'); if (e.target === e.currentTarget && inp) inp.focus(); }}>
+          ${w.kw.map(k => html`<span key=${k} className="chip-kw">${k}<button aria-label=${'Hapus ' + k} onClick=${() => setW(x => ({ kw: x.kw.filter(y => y !== k) }))}>${I('x', 12)}</button></span>`)}
+          <input value=${w.kwDraft} placeholder="mis. karantina, PO hilang" aria-label="Kata kunci"
+            onChange=${e => { const v = e.target.value; if (v.includes(',')) v.split(',').slice(0, -1).forEach(addKw), setW({ kwDraft: v.split(',').pop() }); else setW({ kwDraft: v }); }}
+            onFocus=${() => set({ focus: 'kw' })} onBlur=${() => set(p => p.focus === 'kw' ? { focus: null } : {})}
+            onKeyDown=${e => { if (e.key === 'Enter') { e.preventDefault(); addKw(w.kwDraft); } else if (e.key === 'Backspace' && !w.kwDraft && w.kw.length) setW(x => ({ kw: x.kw.slice(0, -1) })); }} />
+        </div>
+        ${kwSuggest.length > 0 && html`
+          <div className="suggest"><span>Saran:</span>${kwSuggest.map(k => html`<button key=${k} className="sug" onClick=${() => addKw(k)}>+ ${k}</button>`)}</div>`}
+      </section>
+      <div className="w-foot">
+        <button className="btn" disabled=${s.saving} onClick=${() => save('draft')}>Simpan draf</button>
+        <button className="btn primary" disabled=${s.saving} onClick=${() => save('published')}>${s.saving ? 'Menyimpan…' : 'Terbitkan'}</button>
+      </div>
+    </div>`;
+
+  // ================================================================= drawer
+  const prompts = s.typing ? [] : PROMPTS.filter(p => !s.msgs.some(m => m.text === p));
+  const drawer = html`
+    ${s.chatOpen && html`<div className="scrim" onClick=${() => set({ chatOpen: false })}></div>`}
+    <aside className=${'drawer' + (s.chatOpen ? ' open' : '')} style=${{ width: mid ? 480 : '100vw' }} aria-label="Mancu" aria-hidden=${!s.chatOpen}>
+      <div className="d-head">
+        <span className="d-tile">${I('sparkles', 22)}</span>
+        <div className="d-name">
+          <span>Mancu<span className="badge-ai">AI</span></span>
+          <span className="d-status"><span className="dot ring"></span>Online & terindeks ke SOP gudang</span>
+        </div>
+        <button className="d-btn" title="Chat baru" aria-label="Chat baru" onClick=${() => { clearTimeout(timers.current.ask); set({ msgs: [], typing: false }); }}>${I('rotate', 18)}</button>
+        <button className="d-btn" title="Tutup" aria-label="Tutup" onClick=${() => set({ chatOpen: false })}>${I('x', 22)}</button>
+      </div>
+      <div className="d-sub"><span className="ic">${I('file', 16)}</span><span>${docs.length} dokumen terindeks · terbaru SOP-DC-INV-007 Rev 11</span></div>
+      <div className="d-body" ref=${bodyRef}>
+        ${!s.msgs.length && !s.typing && html`
+          <div className="hello"><b>Halo, ${USER.first}.</b><span>Tanya apa saja tentang SOP, IK, atau Specbook gudang. Setiap jawaban menyebut bagian dokumen sumbernya.</span></div>`}
+        ${s.msgs.map((m, i) => m.user ? html`<div key=${i} className="msg-user">${m.text}</div>` : html`
+          <div key=${i} className="msg-ai">
+            <span className="who"><span className="spark-tile" style=${{ width: 26, height: 26 }}>${I('sparkles', 14)}</span>Mancu</span>
+            <span className="intro">${m.intro}</span>
+            <ol className="numlist">${m.items.map((t, j) => html`<li key=${j}><span>${j + 1}.</span><span>${t}</span></li>`)}</ol>
+            ${m.note && html`<span className="msg-note">${m.note}</span>`}
+            ${m.sources.length > 0 && html`
+              <div className="src-cards">
+                <span className="eyebrow" style=${{ color: 'var(--sec2)' }}>Sumber</span>
+                ${m.sources.map(src => html`<button key=${src.label} className="src-card" onClick=${() => openSource(src)}><span className="tile">${I('file', 16)}</span><b>${src.label}</b><span className="ic">${I('arrowR', 16)}</span></button>`)}
+              </div>`}
+          </div>`)}
+        ${s.typing && html`<div className="typing"><span className="dot"></span>Mancu sedang membaca SOP…</div>`}
+        ${prompts.length > 0 && html`
+          <div style=${{ display: 'flex', flexDirection: 'column' }}>
+            <span className="eyebrow" style=${{ color: 'var(--sec2)', paddingBottom: 6 }}>${s.msgs.length ? 'Pertanyaan lain' : 'Coba tanyakan'}</span>
+            ${prompts.map(p => html`<button key=${p} className="prompt-row" onClick=${() => ask(p)}><span>${p}</span><span className="ic">${I('arrowR', 16)}</span></button>`)}
+          </div>`}
+      </div>
+      <form className="composer" onSubmit=${e => { e.preventDefault(); ask(s.draft); }}>
+        <div className=${'composer-box' + (s.focus === 'chat' ? ' focus' : '')}>
+          <input value=${s.draft} placeholder="Tanyakan prosedur, batas, atau alur…" aria-label="Pertanyaan untuk Mancu" onChange=${e => set({ draft: e.target.value })}
+            onFocus=${() => set({ focus: 'chat' })} onBlur=${() => set(p => p.focus === 'chat' ? { focus: null } : {})} />
+          <button type="submit" className="send" title="Kirim" aria-label="Kirim">${I('send')}</button>
+        </div>
+        <span className="disclaimer">Mancu bisa salah. Pastikan langkah kritis sesuai SOP yang dikutip.</span>
+      </form>
+    </aside>`;
+
+  // ================================================================= page
+  const page = s.step === 'home' ? home : s.step === 'list' ? list : s.step === 'reader' ? reader() : writer;
+  return html`
+    <div style=${{ minHeight: '100vh' }} onClick=${e => { if (s.verOpen && !e.target.closest('.rev-wrap')) set({ verOpen: false }); }}>
+      ${header}
+      <main className=${'main' + (s.step === 'reader' ? ' reader' : '')}>
+        <div className=${'anim' + (s.anim ? '' : ' out')}>${page}</div>
+      </main>
+      ${s.step === 'reader' && !s.chatOpen && html`
+        <button className="fab" onClick=${() => set({ chatOpen: true })}>
+          <span className="c">${I('sparkles', 18)}</span>
+          <span className="t"><b>Tanya Mancu AI</b>${mid && html`<span>Asisten SOP gudang</span>`}</span>
+        </button>`}
+      ${drawer}
+      ${s.toast && html`<div className="toast" role="status">${I('check', 18)}<span>${s.toast}</span></div>`}
+    </div>`;
+}
+
+ReactDOM.createRoot(document.getElementById('app')).render(html`<${App} />`);
+})();
+</script>
