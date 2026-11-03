@@ -593,9 +593,9 @@ function App() {
         <div key=${t.id} className="toc-item">
           <button className=${'toc-row' + (t.on && !(open && s.activeSub) ? ' on' : '')} aria-expanded=${t.subs.length ? open : undefined}
             onClick=${() => {
-              // A section with sub-headings opens (and jumps there) or closes on any click of its row.
+              // A section with sub-headings only opens or closes its list; its sub-headings jump to the text.
               if (t.subs.length) set(p => ({ tocOpen: { ...p.tocOpen, [t.id]: !open } }));
-              if (!t.subs.length || !open) { scrollToSec(t.id); set({ activeSub: null }); }
+              else { scrollToSec(t.id); set({ activeSub: null }); }
             }}>
             <span className="toc-link">${t.label}</span>
             ${t.subs.length > 0 && html`<span className="toc-chev">${I(open ? 'chevD' : 'chevR', 15)}</span>`}
