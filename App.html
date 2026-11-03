@@ -119,6 +119,24 @@ function kwSearch(q, docs) {
   return [...secs.sort((a, b) => b.n - a.n).slice(0, 5), ...ds.sort((a, b) => b.n - a.n).slice(0, 5)];
 }
 
+/** The section line that matches the most words, trimmed around the first match, without markup. */
+function excerpt(sec, ws) {
+  const plain = t => String(t).replace(/\*\*/g, '').replace(/\[([^\]]+)\]\([^)]+\)/g, '$1');
+  const lines = [];
+  sec.blocks.forEach(b => {
+    if (b.kind === 'p' || b.kind === 'h') lines.push(b.text);
+    else if (b.kind === 'steps') b.items.forEach(it => lines.push(it.text));
+    else if (b.kind === 'bullets') b.items.forEach(t => lines.push(t));
+    else if (b.kind === 'table') [b.head, ...b.rows].forEach(r => lines.push(r.join(' · ')));
+  });
+  const score = l => ws.filter(w => l.toLowerCase().includes(w)).length;
+  const best = lines.reduce((b, l) => score(l) > score(b) ? l : b, lines[0] || '');
+  const text = plain(best);
+  const at = Math.max(0, Math.min(...ws.map(w => text.toLowerCase().indexOf(w)).filter(i => i >= 0), text.length) - 40);
+  const cut = text.slice(at, at + 120);
+  return (at > 0 ? '…' : '') + cut + (at + 120 < text.length ? '…' : '');
+}
+
 /** Used when Gemini is not configured: point at the closest documents. */
 function localAnswer(text, docs) {
   const hits = kwSearch(text, docs).slice(0, 3);
@@ -322,7 +340,23 @@ function App() {
 
   // ================================================================= header
   const ql = s.q.trim().toLowerCase();
-  const searchHits = ql ? lib.filter(d => docHay(d).includes(ql)).slice(0, 5) : [];
+  // Header search is keyword search over sections (then whole documents); Mancu is the last row.
+  const searchHits = ql ? (() => {
+    const seen = {}, out = [];
+    kwSearch(s.q, lib).forEach(h => {
+      const key = h.d.id + (h.s ? '#' + h.s.id : '');
+      if (seen[key] || (!h.s && out.some(o => o.d.id === h.d.id))) return;
+      seen[key] = true;
+      out.push({ d: h.d, sec: h.s ? h.s.id : null, title: h.s && h.s.title !== h.d.title ? h.s.title : h.d.title, sub: h.s ? h.d.code + ' · ' + h.d.title : h.d.code + ' · ' + applies(h.d), text: h.s ? excerpt(h.s, words(s.q)) : '' });
+    });
+    return out.slice(0, 6);
+  })() : [];
+  const hIdx = Math.min(s.hIdx || 0, searchHits.length);
+  const pickHit = i => {
+    headRef.current.blur();
+    if (i < searchHits.length) { openDoc(searchHits[i].d, searchHits[i].sec); set({ q: '' }); }
+    else { ask(s.q); set({ q: '' }); }
+  };
   const header = html`
     <header className="hdr" ref=${hdrRef}>
       <div className="hdr-in">
@@ -335,24 +369,29 @@ function App() {
             <div className=${'hsearch' + (s.focus === 'head' ? ' focus' : '')}>
               ${I('search')}
               <input ref=${headRef} value=${s.q} placeholder="Cari dokumen atau tanya Mancu…" aria-label="Cari dokumen atau tanya Mancu"
-                onChange=${e => set({ q: e.target.value })} onFocus=${() => set({ focus: 'head' })}
+                onChange=${e => set({ q: e.target.value, hIdx: 0 })} onFocus=${() => set({ focus: 'head' })}
                 onBlur=${() => setTimeout(() => set(p => p.focus === 'head' ? { focus: null } : {}), 120)}
-                onKeyDown=${e => { if (e.key === 'Enter' && s.q.trim()) { ask(s.q); set({ q: '' }); e.target.blur(); } }} />
+                onKeyDown=${e => {
+                  if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); set({ hIdx: (hIdx + (e.key === 'ArrowDown' ? 1 : searchHits.length)) % (searchHits.length + 1) }); }
+                  else if (e.key === 'Enter' && s.q.trim()) { e.preventDefault(); pickHit(hIdx); }
+                }} />
               <button className="btn-ask" onMouseDown=${e => { e.preventDefault(); if (s.q.trim()) { ask(s.q); set({ q: '' }); } else set({ chatOpen: true }); }}>
                 <span className="orange">${I('sparkles', 18)}</span>${mid && html`<span>Tanya Mancu</span>`}
               </button>
             </div>
             ${s.focus === 'head' && ql && html`
               <div className="pop" role="listbox">
-                <div className="eyebrow">Dokumen</div>
-                ${searchHits.map(d => html`
-                  <button key=${d.id} className="pop-row" onMouseDown=${e => { e.preventDefault(); headRef.current.blur(); openDoc(d); }}>
+                <div className="eyebrow">${searchHits.length ? 'Hasil kata kunci' : 'Kata kunci'}</div>
+                ${searchHits.map((h, i) => html`
+                  <button key=${h.d.id + (h.sec || '')} role="option" aria-selected=${i === hIdx} className=${'pop-row' + (i === hIdx ? ' on' : '')}
+                    onMouseEnter=${() => set({ hIdx: i })} onMouseDown=${e => { e.preventDefault(); pickHit(i); }}>
                     <span className="ic muted">${I('file')}</span>
-                    <span className="t"><b>${d.title}</b><span>${d.code} · ${applies(d)}</span></span>
+                    <span className="t"><b>${h.title}</b><span>${h.sub}</span>${h.text && html`<i>${h.text}</i>`}</span>
                   </button>`)}
-                ${!searchHits.length && html`<div className="pop-empty">Tidak ada dokumen yang cocok.</div>`}
-                <button className="pop-ask" onMouseDown=${e => { e.preventDefault(); ask(s.q); set({ q: '' }); headRef.current.blur(); }}>
-                  ${I('sparkles', 18)}<span>Tanya Mancu: “${s.q.trim()}”</span>
+                ${!searchHits.length && html`<div className="pop-empty">Tidak ada bagian dokumen yang cocok. Coba tanya Mancu.</div>`}
+                <button role="option" aria-selected=${hIdx === searchHits.length} className=${'pop-ask' + (hIdx === searchHits.length ? ' on' : '')}
+                  onMouseEnter=${() => set({ hIdx: searchHits.length })} onMouseDown=${e => { e.preventDefault(); pickHit(searchHits.length); }}>
+                  ${I('sparkles', 18)}<span className="t"><b>Tanya Mancu: “${s.q.trim()}”</b><span>${ctxDoc ? 'Jawaban dari ' + ctxDoc.title : 'Jawaban dari semua SOP'}</span></span>
                 </button>
               </div>`}
           </div>`}
@@ -561,9 +600,9 @@ function App() {
                 <h1 className="r-title">${docTitle(doc)}</h1>
               </div>
               <div className="r-actions">
-                <button className="btn sm" onClick=${() => copyText(deepLink).then(() => flash('Link disalin'))}>${I('link', 16)}<span>Salin link</span></button>
-                <button className="btn sm" onClick=${() => go({ step: 'writer', w: EDIT_WRITER(doc) })}>${I('pen', 16)}<span>Perbarui</span></button>
-                ${vers.length > 0 && html`<button className="btn sm primary" onClick=${() => window.print()}>${I('download', 16)}<span>Unduh PDF</span></button>`}
+                <button className="btn icon" title="Salin link" aria-label="Salin link" onClick=${() => copyText(deepLink).then(() => flash('Link disalin'))}>${I('link', 17)}</button>
+                <button className="btn icon" title="Perbarui dokumen" aria-label="Perbarui dokumen" onClick=${() => go({ step: 'writer', w: EDIT_WRITER(doc) })}>${I('pen', 17)}</button>
+                ${vers.length > 0 && html`<button className="btn icon" title="Unduh PDF" aria-label="Unduh PDF" onClick=${() => window.print()}>${I('download', 17)}</button>`}
               </div>
             </div>
             <dl className="r-facts">
