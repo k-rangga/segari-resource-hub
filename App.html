@@ -154,7 +154,7 @@ const saveW = w => { try { localStorage.setItem('kb-drawer-w', String(w)); } cat
 
 function App() {
   const [s, setS] = useState({
-    step: 'home', homeView: 'search', type: 'sop', dept: null, docId: null, verIdx: 0, active: 's0', activeSub: null, tocOpen: {}, verOpen: false, anim: true,
+    step: 'home', homeView: 'search', type: 'sop', dept: null, docId: null, active: 's0', activeSub: null, tocOpen: {}, anim: true,
     q: '', focus: null, homeQ: null, homeAns: null, homeTyping: false, homeTab: 'mancu', browseQ: '',
     chatOpen: false, msgs: [], typing: false, draft: '', toast: null, w: NEW_WRITER(), saving: false
   });
@@ -174,7 +174,7 @@ function App() {
 
   // ---- navigation
   const go = (patch, after) => {
-    set({ ...patch, anim: false, verOpen: false });
+    set({ ...patch, anim: false });
     window.scrollTo({ top: 0 });
     requestAnimationFrame(() => requestAnimationFrame(() => { set({ anim: true }); if (after) after(); }));
   };
@@ -185,7 +185,7 @@ function App() {
     if (!d) return;
     const cur = sRef.current;
     const dept = d.areas.includes(cur.dept) ? cur.dept : d.areas[0] || null;
-    go({ step: 'reader', docId: d.id, type: d.type, dept, verIdx: 0, active: 's0', activeSub: null, tocOpen: {}, q: '' }, sec ? () => setTimeout(() => scrollToSec(sec), 320) : null);
+    go({ step: 'reader', docId: d.id, type: d.type, dept, active: 's0', activeSub: null, tocOpen: {}, q: '' }, sec ? () => setTimeout(() => scrollToSec(sec), 320) : null);
     if (hasServer) google.script.history.replace(null, { doc: d.id });
   };
   const goHome = () => { go({ step: 'home', homeView: 'search', docId: null, q: '', homeQ: null, homeAns: null, homeTyping: false }); if (hasServer) google.script.history.replace(null, {}); };
@@ -224,7 +224,6 @@ function App() {
       } else if (e.key === 'Escape') {
         if (tag === 'INPUT' || tag === 'TEXTAREA') e.target.blur();
         else if (cur.chatOpen) set({ chatOpen: false });
-        else if (cur.verOpen) set({ verOpen: false });
       }
     };
     window.addEventListener('resize', onR);
@@ -242,7 +241,8 @@ function App() {
   }, []);
 
   const readerDoc = s.step === 'reader' ? findDoc(s.docId) : null;
-  const readerVer = readerDoc && readerDoc.versions[s.verIdx];
+  // Readers only see the latest revision; older ones live on as changelog entries.
+  const readerVer = readerDoc && readerDoc.versions[0];
   const readerSecs = readerVer ? parseBody(readerVer.body, readerDoc.title) : [];
 
   useEffect(() => {
@@ -259,7 +259,7 @@ function App() {
     };
     window.addEventListener('scroll', onS, { passive: true });
     return () => window.removeEventListener('scroll', onS);
-  }, [s.step, s.docId, s.verIdx, docs]);
+  }, [s.step, s.docId, docs]);
 
   useEffect(() => { if (bodyRef.current) bodyRef.current.scrollTop = bodyRef.current.scrollHeight; }, [s.msgs, s.typing]);
 
@@ -462,15 +462,13 @@ function App() {
     if (!doc) return html`<div className="article"><div className="article-in">${loading ? typingEl : html`<p className="prose">Dokumen tidak ditemukan.</p>`}</div></div>`;
     const docT = typeOf(doc.type), dDept = deptOf(s.dept) || deptOf(doc.areas[0]) || DEPTS[0];
     const vers = doc.versions, viewV = readerVer;
-    const isCurrent = s.verIdx === 0;
     const secs = readerSecs;
     const showToc = secs.length > 0;
     const toc = [...secs.map(x => ({ id: x.id, label: x.title, on: x.id === s.active,
       subs: x.blocks.filter(b => b.kind === 'h').map(b => ({ aid: b.aid, label: b.text.replace(/\*\*/g, '') })) })),
       ...(vers.length ? [{ id: 'log', label: 'Riwayat perubahan', on: s.active === 'log', subs: [] }] : [])];
-    const sideDocs = lib.filter(d => d.areas.includes(dDept.id));
     const signoff = parseSignoff(doc.signoff);
-    const cols = [xwide ? '280px' : null, 'minmax(0, 1fr)', showToc && wide ? '300px' : null].filter(Boolean).join(' ');
+    const cols = showToc && wide ? (xwide ? '320px minmax(0, 1fr)' : '280px minmax(0, 1fr)') : 'minmax(0, 1fr)';
     // A section with sub-headings opens while it is being read; its chevron opens or closes it by hand.
     const tocRow = t => {
       const open = t.subs.length > 0 && (s.tocOpen[t.id] !== undefined ? s.tocOpen[t.id] : t.on);
@@ -490,13 +488,16 @@ function App() {
 
     return html`
       <div className="reader-grid" style=${{ gridTemplateColumns: cols }}>
-        ${xwide && html`
-          <div className="leftnav"><nav aria-label="Dokumen di area ini">
-            <span className="eyebrow">${dDept.label}</span>
-            ${sideDocs.map(d => html`<button key=${d.id} className=${'side-doc' + (d.id === doc.id ? ' on' : '')} onClick=${() => d.id !== doc.id && openDoc(d)}><b>${d.title}</b><span>${typeOf(d.type).short}</span></button>`)}
-            <button className="side-all" onClick=${() => go({ step: 'list', dept: dDept.id, type: doc.type })}>‹ Semua dokumen</button>
-          </nav></div>`}
-        <article className="article" style=${{ padding: wide ? '28px 56px 80px' : mid ? '24px 32px 60px' : undefined }}>
+        ${showToc && wide && html`
+          <div className="sidetoc"><aside>
+            <span className="eyebrow">Di halaman ini</span>
+            <nav className="toc" aria-label="Di halaman ini">${toc.map(tocRow)}</nav>
+            <button className="ask-card" onClick=${() => set({ chatOpen: true })}>
+              <span className="spark-tile" style=${{ width: 28, height: 28 }}>${I('sparkles', 14)}</span>
+              <span className="t"><b>Tanya Mancu tentang SOP ini</b><span>Setiap jawaban menyebut bagian sumbernya.</span></span>
+            </button>
+          </aside></div>`}
+        <article className="article" style=${{ padding: wide ? '32px 64px 96px' : mid ? '24px 32px 60px' : undefined }}>
           <div className="article-in">
             <nav className="crumbs" aria-label="Breadcrumb" style=${{ marginBottom: 20 }}>
               <button className="crumb" onClick=${goHome} aria-label="Beranda" style=${{ width: 36, justifyContent: 'center', padding: 0 }}>${I('home', 18)}</button><span className="sep">›</span>
@@ -509,45 +510,24 @@ function App() {
             <div className="r-meta">
               <span className="code">${doc.code}</span>
               <span className="dotsep">·</span><span>Berlaku ${viewV ? fmtDate(viewV.effectiveDate) : '–'}</span>
-              ${vers.length > 0 && html`<span className="dotsep">·</span>
-              <span className="rev-wrap">
-                <button className="rev-btn" aria-haspopup="listbox" aria-expanded=${s.verOpen} onClick=${() => set({ verOpen: !s.verOpen })}>
-                  <span>Rev ${viewV.rev}</span><span className=${'rev-pill' + (isCurrent ? '' : ' old')}>${isCurrent ? 'Terbaru' : 'Lama'}</span><span className="ic muted">${I('chevD', 16)}</span>
-                </button>
-                ${s.verOpen && html`
-                  <div className="rev-pop" role="listbox">
-                    <div className="eyebrow">Riwayat versi</div>
-                    <div className="rev-scroll">
-                    ${vers.map((v, i) => html`
-                      <button key=${i} className=${'rev-opt' + (i === s.verIdx ? ' on' : '')} onClick=${() => { set({ verIdx: i, verOpen: false, active: 's0', activeSub: null, tocOpen: {} }); window.scrollTo({ top: 0 }); }}>
-                        <span className="t"><b>Rev ${v.rev}</b><span>Berlaku ${fmtDate(v.effectiveDate)}${v.note ? ' · ' + v.note : ''}</span></span>
-                        <span className=${'tag' + (i === 0 ? ' new' : '')}>${i === 0 ? 'Terbaru' : 'Lama'}</span>
-                      </button>`)}
-                    </div>
-                  </div>`}
-              </span>`}
-              ${doc.pages && isCurrent && html`<span className="dotsep">·</span><span>${doc.pages} halaman</span>`}
+              ${vers.length > 0 && html`<span className="dotsep">·</span><span className="rev-static">Rev ${viewV.rev}</span>`}
+              ${doc.pages && html`<span className="dotsep">·</span><span>${doc.pages} halaman</span>`}
               <span className="dotsep">·</span><span>Berlaku untuk ${applies(doc)}</span>
             </div>
             <div className="r-actions">
               <button className="btn" onClick=${() => copyText(deepLink).then(() => flash('Link disalin'))}>${I('link', 18)}<span>Salin link</span></button>
-              ${isCurrent && html`<button className="btn" onClick=${() => go({ step: 'writer', w: EDIT_WRITER(doc) })}>${I('pen', 18)}<span>Perbarui</span></button>`}
+              ${html`<button className="btn" onClick=${() => go({ step: 'writer', w: EDIT_WRITER(doc) })}>${I('pen', 18)}<span>Perbarui</span></button>`}
               ${vers.length > 0 && html`<button className="btn primary" onClick=${() => window.print()}>${I('download', 18)}<span>Unduh PDF</span></button>`}
             </div>
-            ${!isCurrent && html`
-              <div className="old-banner"><span className="ic">${I('alert')}</span>
-                <span>Anda sedang melihat Rev ${viewV.rev} yang sudah tidak berlaku. Gunakan Rev ${vers[0].rev} untuk operasional harian.</span>
-                <button onClick=${() => { set({ verIdx: 0, active: 's0', activeSub: null, tocOpen: {} }); window.scrollTo({ top: 0 }); }}>Lihat versi terbaru</button>
-              </div>`}
             ${showToc && !wide && html`
               <div className="chip-toc">${toc.map(t => html`<button key=${t.id} className=${'chip' + (t.on ? ' on' : '')} onClick=${() => scrollToSec(t.id)}>${t.label}</button>`)}</div>`}
             ${secs.length ? html`
               ${secs.map(sec => html`
-                <section key=${s.verIdx + sec.id} id=${'sec-' + sec.id} className="sec">
+                <section key=${sec.id} id=${'sec-' + sec.id} className="sec">
                   ${sec.title !== doc.title && html`<h2 className="sec-h">${secLink(sec.id)}<span>${sec.title}</span></h2>`}
                   ${sec.blocks.map(b => html`<div key=${b.aid} id=${b.aid} className="blk">${block(b)}</div>`)}
                 </section>`)}
-              ${isCurrent && signoff.length > 0 && html`
+              ${signoff.length > 0 && html`
                 <section className="signoff">
                   <span className="eyebrow lg">Persetujuan dokumen</span>
                   <div className="signoff-grid">
@@ -560,13 +540,9 @@ function App() {
               <section id="sec-log" className="sec changelog">
                 <h2 className="sec-h">${secLink('log')}<span>Riwayat perubahan</span></h2>
                 ${vers.map((v, i) => html`
-                  <div key=${i} className=${'log-entry' + (i === s.verIdx ? ' viewing' : '')}>
+                  <div key=${i} className="log-entry">
                     <h3>Rev ${v.rev}${i === 0 ? ' (Terbaru)' : ''}</h3>
-                    <div className="log-date">
-                      <b>${fmtDate(v.effectiveDate)}</b>
-                      ${i === s.verIdx ? html`<span className="log-tag">Sedang dibaca</span>`
-                        : html`<button className="text-btn" onClick=${() => { set({ verIdx: i, active: 's0', activeSub: null, tocOpen: {} }); window.scrollTo({ top: 0 }); }}>Lihat Rev ${v.rev}</button>`}
-                    </div>
+                    <div className="log-date"><b>${fmtDate(v.effectiveDate)}</b></div>
                     ${v.note ? html`<ul className="bullets">${v.note.split('\n').map(l => l.replace(/^[-•]\s*/, '').trim()).filter(Boolean).map((t, j) => html`<li key=${j}><span>•</span><span>${rich(t)}</span></li>`)}</ul>`
                       : html`<p className="log-empty">Belum ada catatan perubahan.</p>`}
                   </div>`)}
@@ -577,15 +553,6 @@ function App() {
               </div>`}
           </div>
         </article>
-        ${showToc && wide && html`
-          <div className="sidetoc"><aside>
-            <span className="eyebrow">Di halaman ini</span>
-            <div className="toc">${toc.map(tocRow)}</div>
-            <button className="ask-card" onClick=${() => set({ chatOpen: true })}>
-              <span className="spark-tile" style=${{ width: 28, height: 28 }}>${I('sparkles', 14)}</span>
-              <span className="t"><b>Tanya Mancu tentang SOP ini</b><span>Setiap jawaban menyebut bagian sumbernya.</span></span>
-            </button>
-          </aside></div>`}
       </div>`;
   };
 
@@ -776,7 +743,7 @@ function App() {
   // ================================================================= page
   const page = s.step === 'home' ? home : s.step === 'list' ? list : s.step === 'reader' ? reader() : writer;
   return html`
-    <div style=${{ minHeight: '100vh' }} onClick=${e => { if (s.verOpen && !e.target.closest('.rev-wrap')) set({ verOpen: false }); }}>
+    <div style=${{ minHeight: '100vh' }}>
       ${header}
       <main className=${'main' + (s.step === 'reader' ? ' reader' : '')}>
         <div className=${'anim' + (s.anim ? '' : ' out')}>${page}</div>
