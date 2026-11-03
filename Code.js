@@ -2,6 +2,7 @@
  * Segari Knowledge Base — server side.
  * Documents live in the Knowledge Base spreadsheet (sheets "Dokumen" and "Versi"), filled from Seed.js when empty.
  * Mancu answers with Gemini, grounded on the latest revision of every document.
+ * Publishing a changed article adds a revision whose changelog Gemini writes; compileChangelogs() backfills empty ones.
  *
  * Script Properties:
  *   GEMINI_API_KEY      required for Mancu (set it yourself; never commit it)
@@ -53,34 +54,103 @@ function publishedDocs_() {
 
 /**
  * Saves a draft or publishes an article from writer mode.
- * @param {{id?:string,title:string,type:string,areas:string[],body:string,versions:{rev:number,effectiveDate:string,note:string}[],keywords:string[]}} a
+ * Publishing a changed body adds a new revision whose changelog Gemini writes by comparing it with the previous one.
+ * A draft (or a document never published) keeps a single revision that is replaced on each save.
+ * @param {{id?:string,title:string,type:string,areas:string[],body:string,effectiveDate:string,keywords:string[]}} a
  * @param {'draft'|'published'} status
  */
 function saveArticle(a, status) {
   a = clean_(a);
   if (status === 'published' && !a.title) throw new Error('Isi judul artikel dulu');
+  library_();
+  const old = a.id ? readLibrary_().find(d => d.id === a.id) : null;
+  const live = old && old.status !== 'draf' && old.versions.length > 0;
+  const prev = live ? old.versions[0] : null;
+  const changed = !prev || prev.body.trim() !== a.body.trim();
+  // Gemini runs before taking the lock so a slow answer never blocks other saves.
+  const note = status === 'published' && changed ? changelog_(prev ? prev.body : '', a.body) : '';
+
   const ss = library_();
   const lock = LockService.getScriptLock();
   lock.waitLock(10000);
   try {
     const id = a.id || 'artikel-' + Utilities.getUuid().slice(0, 8);
-    const docRow = [id, TYPE_CODE[a.type], a.title, a.title, a.type, a.areas.join(', '), '', a.keywords.join(', '), '',
-      status === 'published' ? 'terbit' : 'draf', now_()];
+    const docRow = [id, old ? old.code : TYPE_CODE[a.type], a.title, old && old.short !== old.title ? old.short : a.title, a.type, a.areas.join(', '),
+      old ? old.pages : '', a.keywords.join(', '), old ? old.signoff : '', status === 'published' ? 'terbit' : 'draf', now_()];
     upsertDoc_(ss.getSheetByName(DOC_SHEET), docRow);
-    replaceVersions_(ss.getSheetByName(VER_SHEET), id, a.versions.map(v => [id, v.rev, v.effectiveDate, v.note, a.body]));
+    const verSheet = ss.getSheetByName(VER_SHEET);
+    if (live) {
+      if (changed) verSheet.appendRow([id, String(Math.max.apply(null, old.versions.map(v => v.rev)) + 1), a.effectiveDate, note, a.body]);
+    } else {
+      const rev = old && old.versions.length ? old.versions[0].rev : 1;
+      replaceVersions_(verSheet, id, [[id, rev, a.effectiveDate, note, a.body]]);
+    }
     return readLibrary_().find(d => d.id === id);
   } finally {
     lock.releaseLock();
   }
 }
 
-// ---------------------------------------------------------------- Mancu (Gemini)
-
 /**
- * Answers a staff question from the latest revision of every document.
- * Returns null when no API key is set, so the page can fall back to a document search.
- * @return {{intro:string, items:string[], note:string, sources:{docId:string, sec:string, label:string}[]}|null}
+ * Fills every empty changelog in the Versi sheet by comparing each revision with the one before it.
+ * Run once from the editor after adding revisions by hand; it skips revisions that already have a note.
  */
+function compileChangelogs() {
+  const sh = library_().getSheetByName(VER_SHEET);
+  const rows = values_(sh, VER_COLS.length);
+  const byDoc = {};
+  rows.forEach((r, i) => { const id = String(r[0]).trim(); if (id) (byDoc[id] = byDoc[id] || []).push({ i: i, rev: Number(r[1]) || 0, date: dateText_(r[2]), note: String(r[3] || '').trim(), body: String(r[4] || '') }); });
+  let n = 0;
+  Object.keys(byDoc).forEach(id => {
+    const vs = byDoc[id].sort((a, b) => a.rev - b.rev || (a.date > b.date ? 1 : -1));
+    vs.forEach((v, k) => {
+      if (v.note || !v.body.trim()) return;
+      const note = changelog_(k ? vs[k - 1].body : '', v.body);
+      sh.getRange(v.i + 2, 4).setValue(note);
+      n++;
+      console.log(id + ' Rev ' + v.rev + ':\n' + note);
+    });
+  });
+  console.log(n + ' catatan perubahan ditulis.');
+}
+
+/** Short changelog lines (one per line) for a new revision; a plain fallback when Gemini is unavailable. */
+function changelog_(prevBody, body) {
+  const fallback = prevBody ? 'Pembaruan isi dokumen.' : 'Rilis pertama.';
+  const key = PropertiesService.getScriptProperties().getProperty('GEMINI_API_KEY');
+  if (!key) return fallback;
+  const text = prevBody
+    ? 'VERSI SEBELUMNYA:\n' + prevBody + '\n\n=====\n\nVERSI BARU:\n' + body
+    : 'DOKUMEN BARU (rilis pertama):\n' + body;
+  try {
+    const out = gemini_(key, CHANGELOG_PROMPT, text, CHANGELOG_SCHEMA, 0.1);
+    const items = (out.items || []).map(x => String(x).replace(/^[-•\s]+/, '').trim()).filter(Boolean).slice(0, 6);
+    return items.length ? items.join('\n') : fallback;
+  } catch (e) {
+    console.error('Changelog: ' + e.message);
+    return fallback;
+  }
+}
+
+/** One generateContent call with a JSON response schema; returns the parsed JSON. */
+function gemini_(key, system, text, schema, temperature) {
+  const model = PropertiesService.getScriptProperties().getProperty('GEMINI_MODEL') || DEFAULT_MODEL;
+  const res = UrlFetchApp.fetch('https://generativelanguage.googleapis.com/v1beta/models/' + encodeURIComponent(model) + ':generateContent', {
+    method: 'post',
+    contentType: 'application/json',
+    headers: { 'x-goog-api-key': key },
+    muteHttpExceptions: true,
+    payload: JSON.stringify({
+      systemInstruction: { parts: [{ text: system }] },
+      contents: [{ role: 'user', parts: [{ text: text }] }],
+      generationConfig: { temperature: temperature, responseMimeType: 'application/json', responseSchema: schema }
+    })
+  });
+  if (res.getResponseCode() !== 200) throw new Error('HTTP ' + res.getResponseCode() + ': ' + res.getContentText().slice(0, 500));
+  const body = JSON.parse(res.getContentText());
+  return JSON.parse(body.candidates[0].content.parts.map(p => p.text || '').join(''));
+}
+
 function askMancu(question) {
   question = String(question || '').trim().slice(0, 500);
   if (!question) throw new Error('Pertanyaan kosong');
@@ -91,36 +161,13 @@ function askMancu(question) {
 
   const chunks = pickChunks_(question, chunks_(publishedDocs_()));
   const context = chunks.map(c => '[' + c.id + '] ' + c.label + '\n' + c.text).join('\n\n---\n\n');
-  const model = props.getProperty('GEMINI_MODEL') || DEFAULT_MODEL;
-  let res;
-  try {
-    res = UrlFetchApp.fetch('https://generativelanguage.googleapis.com/v1beta/models/' + encodeURIComponent(model) + ':generateContent', {
-      method: 'post',
-      contentType: 'application/json',
-      headers: { 'x-goog-api-key': key },
-      muteHttpExceptions: true,
-      payload: JSON.stringify({
-        systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
-        contents: [{ role: 'user', parts: [{ text: 'DOKUMEN:\n\n' + context + '\n\nPERTANYAAN STAF:\n' + question }] }],
-        generationConfig: { temperature: 0.2, responseMimeType: 'application/json', responseSchema: ANSWER_SCHEMA }
-      })
-    });
-  } catch (e) {
-    // Usually a missing "connect to an external service" authorization: run authorizeMancu() once in the editor.
-    console.error('Gemini fetch: ' + e.message);
-    throw new Error('Mancu belum bisa terhubung ke Gemini. Hubungi admin Knowledge Base.');
-  }
-  if (res.getResponseCode() !== 200) {
-    console.error('Gemini ' + res.getResponseCode() + ': ' + res.getContentText().slice(0, 500));
-    throw new Error('Mancu sedang tidak tersedia. Coba lagi sebentar.');
-  }
   let out;
   try {
-    const body = JSON.parse(res.getContentText());
-    out = JSON.parse(body.candidates[0].content.parts.map(p => p.text || '').join(''));
+    out = gemini_(key, SYSTEM_PROMPT, 'DOKUMEN:\n\n' + context + '\n\nPERTANYAAN STAF:\n' + question, ANSWER_SCHEMA, 0.2);
   } catch (e) {
-    console.error('Gemini parse: ' + res.getContentText().slice(0, 500));
-    throw new Error('Mancu sedang tidak tersedia. Coba lagi sebentar.');
+    // A missing "connect to an external service" authorization lands here too: run authorizeMancu() once in the editor.
+    console.error('Gemini: ' + e.message);
+    throw new Error(/permission|izin/i.test(e.message) ? 'Mancu belum bisa terhubung ke Gemini. Hubungi admin Knowledge Base.' : 'Mancu sedang tidak tersedia. Coba lagi sebentar.');
   }
   const byId = {};
   chunks.forEach(c => { byId[c.id] = c; });
@@ -150,6 +197,16 @@ const SYSTEM_PROMPT = [
   'note: peringatan penting jika ada (mis. kondisi inbound ditolak), selain itu string kosong.',
   'sourceIds: id dokumen dalam kurung siku (mis. c3) yang benar-benar dipakai untuk menjawab.'
 ].join('\n');
+
+const CHANGELOG_PROMPT = [
+  'Kamu menyusun catatan perubahan (changelog) untuk dokumen SOP gudang Segari.',
+  'Bandingkan VERSI SEBELUMNYA dengan VERSI BARU dan tulis perubahan yang benar-benar terjadi: aturan, angka, langkah, tanggung jawab, atau bagian yang ditambah, diubah, atau dihapus.',
+  'Sebut nama bagian (mis. "C. Inbound Supplier FC") bila jelas. Abaikan perubahan format, ejaan, atau spasi.',
+  'Untuk DOKUMEN BARU, tulis satu poin "Rilis pertama" lalu ringkas isi utamanya per bagian.',
+  'Bahasa Indonesia, sentence case, setiap poin satu kalimat pendek tanpa nomor. Maksimal 6 poin, urut dari yang paling penting.'
+].join('\n');
+
+const CHANGELOG_SCHEMA = { type: 'OBJECT', properties: { items: { type: 'ARRAY', items: { type: 'STRING' } } }, required: ['items'] };
 
 const ANSWER_SCHEMA = {
   type: 'OBJECT',
@@ -321,15 +378,14 @@ function now_() {
 function clean_(a) {
   a = a || {};
   const str = v => String(v == null ? '' : v).trim();
-  let versions = (a.versions || []).map(v => ({ rev: Number(v.rev) || 1, effectiveDate: str(v.effectiveDate), note: str(v.note) }));
-  if (!versions.length) versions = [{ rev: 1, effectiveDate: '', note: 'Rilis pertama' }];
+  const date = str(a.effectiveDate);
   return {
     id: str(a.id),
     title: str(a.title),
     type: TYPES.indexOf(a.type) >= 0 ? a.type : 'sop',
     areas: (a.areas || []).filter(x => AREAS.indexOf(x) >= 0),
     body: String(a.body || ''),
-    versions: versions,
+    effectiveDate: /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : Utilities.formatDate(new Date(), TZ, 'yyyy-MM-dd'),
     keywords: (a.keywords || []).map(str).filter(Boolean)
   };
 }
