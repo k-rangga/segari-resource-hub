@@ -93,25 +93,29 @@ function saveArticle(a, status) {
 
 /**
  * Fills every empty changelog in the Versi sheet by comparing each revision with the one before it.
- * Run once from the editor after adding revisions by hand; it skips revisions that already have a note.
+ * Run from the editor after adding revisions by hand. It skips revisions that already have a note and stops
+ * before the 6-minute limit, so run it again until the log says nothing is left.
  */
 function compileChangelogs() {
+  const started = Date.now();
   const sh = library_().getSheetByName(VER_SHEET);
   const rows = values_(sh, VER_COLS.length);
   const byDoc = {};
   rows.forEach((r, i) => { const id = String(r[0]).trim(); if (id) (byDoc[id] = byDoc[id] || []).push({ i: i, rev: Number(r[1]) || 0, date: dateText_(r[2]), note: String(r[3] || '').trim(), body: String(r[4] || '') }); });
-  let n = 0;
+  let n = 0, left = 0;
   Object.keys(byDoc).forEach(id => {
     const vs = byDoc[id].sort((a, b) => a.rev - b.rev || (a.date > b.date ? 1 : -1));
     vs.forEach((v, k) => {
       if (v.note || !v.body.trim()) return;
+      if (Date.now() - started > 4.5 * 60 * 1000) { left++; return; }
       const note = changelog_(k ? vs[k - 1].body : '', v.body);
       sh.getRange(v.i + 2, 4).setValue(note);
+      SpreadsheetApp.flush();
       n++;
       console.log(id + ' Rev ' + v.rev + ':\n' + note);
     });
   });
-  console.log(n + ' catatan perubahan ditulis.');
+  console.log(n + ' catatan perubahan ditulis.' + (left ? ' Masih ada ' + left + ', jalankan compileChangelogs() sekali lagi.' : ' Semua sudah terisi.'));
 }
 
 /** Short changelog lines (one per line) for a new revision; a plain fallback when Gemini is unavailable. */
@@ -119,9 +123,14 @@ function changelog_(prevBody, body) {
   const fallback = prevBody ? 'Pembaruan isi dokumen.' : 'Rilis pertama.';
   const key = PropertiesService.getScriptProperties().getProperty('GEMINI_API_KEY');
   if (!key) return fallback;
-  const text = prevBody
-    ? 'VERSI SEBELUMNYA:\n' + prevBody + '\n\n=====\n\nVERSI BARU:\n' + body
-    : 'DOKUMEN BARU (rilis pertama):\n' + body;
+  let text;
+  if (prevBody) {
+    const diff = sectionDiff_(prevBody, body);
+    if (!diff) return 'Tidak ada perubahan isi.';
+    text = 'PERUBAHAN PER BAGIAN (baris "-" dihapus, baris "+" ditambah atau diubah):\n\n' + diff;
+  } else {
+    text = 'DOKUMEN BARU (rilis pertama):\n' + body.slice(0, CONTEXT_CHARS);
+  }
   try {
     const out = gemini_(key, CHANGELOG_PROMPT, text, CHANGELOG_SCHEMA, 0.1);
     const items = (out.items || []).map(x => String(x).replace(/^[-•\s]+/, '').trim()).filter(Boolean).slice(0, 6);
@@ -130,6 +139,36 @@ function changelog_(prevBody, body) {
     console.error('Changelog: ' + e.message);
     return fallback;
   }
+}
+
+/**
+ * Only what changed between two bodies, grouped by "# " section: added and removed lines per section.
+ * Keeps the Gemini request small (a 27-page SOP sends a few hundred lines instead of two full copies).
+ */
+function sectionDiff_(prevBody, body) {
+  const split = text => {
+    const out = {}, order = [];
+    let cur = '(Pembuka)';
+    String(text).split('\n').forEach(raw => {
+      const line = raw.trim();
+      if (!line) return;
+      if (/^# /.test(line)) { cur = line.slice(2).trim(); return; }
+      if (!out[cur]) { out[cur] = []; order.push(cur); }
+      out[cur].push(line);
+    });
+    return { out: out, order: order };
+  };
+  const a = split(prevBody), b = split(body);
+  const names = b.order.concat(a.order.filter(x => b.order.indexOf(x) < 0));
+  const parts = [];
+  names.forEach(name => {
+    const before = a.out[name] || [], after = b.out[name] || [];
+    if (!before.length) { parts.push('## ' + name + ' (bagian baru)\n' + after.map(l => '+ ' + l).join('\n')); return; }
+    if (!after.length) { parts.push('## ' + name + ' (bagian dihapus)'); return; }
+    const gone = before.filter(l => after.indexOf(l) < 0), added = after.filter(l => before.indexOf(l) < 0);
+    if (gone.length || added.length) parts.push('## ' + name + '\n' + gone.map(l => '- ' + l).concat(added.map(l => '+ ' + l)).join('\n'));
+  });
+  return parts.join('\n\n').slice(0, CONTEXT_CHARS);
 }
 
 /** One generateContent call with a JSON response schema; returns the parsed JSON. */
@@ -200,7 +239,8 @@ const SYSTEM_PROMPT = [
 
 const CHANGELOG_PROMPT = [
   'Kamu menyusun catatan perubahan (changelog) untuk dokumen SOP gudang Segari.',
-  'Bandingkan VERSI SEBELUMNYA dengan VERSI BARU dan tulis perubahan yang benar-benar terjadi: aturan, angka, langkah, tanggung jawab, atau bagian yang ditambah, diubah, atau dihapus.',
+  'Kamu menerima PERUBAHAN PER BAGIAN antara versi sebelumnya dan versi baru. Tulis perubahan yang benar-benar terjadi: aturan, angka, langkah, tanggung jawab, atau bagian yang ditambah, diubah, atau dihapus.',
+  'Pasangan baris "-" dan "+" yang mirip berarti baris itu diubah: jelaskan nilai lama dan barunya bila penting (mis. batas tumpukan 120 cm menjadi 150 cm).',
   'Sebut nama bagian (mis. "C. Inbound Supplier FC") bila jelas. Abaikan perubahan format, ejaan, atau spasi.',
   'Untuk DOKUMEN BARU, tulis satu poin "Rilis pertama" lalu ringkas isi utamanya per bagian.',
   'Bahasa Indonesia, sentence case, setiap poin satu kalimat pendek tanpa nomor. Maksimal 6 poin, urut dari yang paling penting.'
