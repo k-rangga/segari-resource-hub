@@ -1,144 +1,21 @@
 <script>
-// Sample content: document catalogue, the flagship SOP-DC-INV-007 sections, and Mancu's canned answers.
+// Fixed vocab: document types, warehouse areas, and example questions. Documents themselves come from the sheet.
 const TYPES = [
-  { id: "sop", short: "SOP", long: "Standard Operational Procedure", desc: "Prosedur langkah demi langkah yang wajib diikuti setiap shift.", icon: "file" },
-  { id: "ik", short: "Instruksi Kerja", long: "Instruksi Kerja", desc: "Cara memakai WH Apps, PDT, dan internal tools.", icon: "book" },
-  { id: "spec", short: "Specbook", long: "Tabel Spesifikasi", desc: "Spesifikasi produk, batas expired, dan parameter sampling.", icon: "table" },
-  { id: "safety", short: "Keamanan & Kualitas", long: "Manual Keamanan & Kualitas", desc: "Standar defect, recall, dan pengecekan kualitas.", icon: "shield" },
+  { id: "sop", short: "SOP", long: "Standard Operational Procedure", desc: "Prosedur langkah demi langkah yang wajib diikuti setiap shift." },
+  { id: "ik", short: "Instruksi Kerja", long: "Instruksi Kerja", desc: "Cara memakai WH Apps, PDT, dan internal tools." },
+  { id: "spec", short: "Specbook", long: "Tabel Spesifikasi", desc: "Spesifikasi produk, batas expired, dan parameter sampling." },
+  { id: "safety", short: "Keamanan & Kualitas", long: "Manual Keamanan & Kualitas", desc: "Standar defect, recall, dan pengecekan kualitas." },
 ];
 const DEPTS = [
-  { id: "pc", label: "Inbound PC (Processing Center)", short: "Inbound PC", icon: "factory" },
-  { id: "dmg", label: "Inbound PC Dry Goods (DMG)", short: "Inbound DMG", icon: "package" },
-  { id: "fc", label: "Inbound FC (Fulfillment Center)", short: "Inbound FC", icon: "store" },
-  { id: "storage", label: "Penyimpanan & Putaway", short: "Penyimpanan & Putaway", icon: "layers" },
-  { id: "outbound", label: "Outbound & Pengiriman", short: "Outbound", icon: "truck" },
+  { id: "pc", label: "Inbound PC (Processing Center)", short: "Inbound PC" },
+  { id: "dmg", label: "Inbound PC Dry Goods (DMG)", short: "Inbound DMG" },
+  { id: "fc", label: "Inbound FC (Fulfillment Center)", short: "Inbound FC" },
+  { id: "storage", label: "Penyimpanan & Putaway", short: "Penyimpanan & Putaway" },
+  { id: "outbound", label: "Outbound & Pengiriman", short: "Outbound" },
 ];
-const DOCS = [
-  { id: "inv007", code: "SOP-DC-INV-007", title: "Inbound Supplier", short: "SOP-DC-INV-007", type: "sop", depts: ["pc", "dmg", "fc"], rev: 11, date: "15 Okt 2025", pages: 27, full: true, applies: "PC · DMG · FC" },
-  { id: "ice", code: "SOP", title: "Handling Ice Cream", short: "Handling Ice Cream", type: "sop", depts: ["fc"], rev: 3, date: "4 Agu 2025", pages: 6, applies: "FC" },
-  { id: "poultry", code: "SOP", title: "Sampling Inbound Produk Frozen Poultry", short: "Sampling Frozen Poultry", type: "sop", depts: ["fc", "pc"], rev: 2, date: "12 Mei 2025", pages: 8, applies: "PC · FC" },
-  { id: "staging", code: "SOP", title: "Pengaturan Susunan Staging SKU di Fulfilment Centre", short: "Susunan Staging SKU", type: "sop", depts: ["fc", "storage"], rev: 4, date: "1 Sep 2025", pages: 10, applies: "FC" },
-  { id: "ikinb", code: "IK", title: "Cara Pengisian Warehouse App Inbound Inventory", short: "IK Inbound Inventory", type: "ik", depts: ["pc", "fc"], rev: 5, date: "20 Sep 2025", pages: 14, applies: "PC · FC" },
-  { id: "ikdry", code: "IK", title: "Cara Pengisian Warehouse App Inbound Inventory SKU Dry Goods", short: "IK Inbound Dry Goods", type: "ik", depts: ["dmg"], rev: 2, date: "20 Sep 2025", pages: 12, applies: "DMG" },
-  { id: "ikgm", code: "IK", title: "Cara Pengisian Warehouse App Good Movement Pada Saat Inbound Supplier", short: "IK Good Movement", type: "ik", depts: ["pc", "storage"], rev: 3, date: "2 Jul 2025", pages: 9, applies: "PC" },
-  { id: "putaway", code: "IK", title: "Pedoman Putaway", short: "Pedoman Putaway", type: "ik", depts: ["fc", "storage"], rev: 2, date: "18 Jun 2025", pages: 7, applies: "FC" },
-  { id: "mst", code: "Specbook", title: "Master Specification Table", short: "Master Spec Table", type: "spec", depts: ["pc", "fc"], rev: 8, date: "1 Okt 2025", pages: 40, applies: "PC · FC" },
-  { id: "dry", code: "Specbook", title: "Table Specbook Dry", short: "Specbook Dry", type: "spec", depts: ["dmg", "fc"], rev: 6, date: "1 Okt 2025", pages: 22, applies: "DMG · FC" },
-  { id: "bsp", code: "Specbook", title: "Tabel Parameter Inbound Kategori BSP", short: "Parameter BSP", type: "spec", depts: ["pc", "fc"], rev: 3, date: "10 Mar 2025", pages: 5, applies: "PC · FC" },
-  { id: "defect", code: "SOP", title: "Penanganan Produk Potensi Defect dan Recall Produk", short: "Defect & Recall", type: "safety", depts: ["pc", "fc", "dmg"], rev: 4, date: "8 Apr 2025", pages: 11, applies: "PC · DMG · FC" },
-  { id: "qc", code: "SOP", title: "Pengecekan Kualitas", short: "Pengecekan Kualitas", type: "safety", depts: ["dmg"], rev: 2, date: "8 Apr 2025", pages: 9, applies: "DMG" },
-];
-
-const steps = (start, arr) => ({ kind: "steps", items: arr.map((text, i) => ({ n: start + i, text })) });
-const SECTIONS = [
-  { id: "umum", label: "Ketentuan umum", title: "Ketentuan umum", blocks: [{ kind: "kv", rows: [
-    { k: "Sirkulasi", v: "Seluruh Staff Inbound Supplier Gudang Segari." },
-    { k: "Tujuan", v: "Memastikan seluruh staff Inbound Supplier Gudang Segari memahami prosedur penerimaan produk dari Supplier." },
-    { k: "Kebijakan", v: "Seluruh Staff Inbound Supplier wajib melaksanakan penerimaan produk dari Supplier sesuai standar operasional prosedur." },
-  ] }] },
-  { id: "a", label: "A. Inbound Supplier PC", title: "A. Inbound Supplier PC (Processing Center) DMT", blocks: [
-    steps(1, [
-      "Pintu loading dock inbound selalu dalam kondisi tertutup jika tidak ada proses operasional inbound.",
-      "Saat supplier datang, security scan barcode PO. Jam kedatangan hingga selesai bongkar tercatat di Dashboard Waktu Inbound Supplier.",
-      "Jika scan PO gagal, security input kedatangan secara manual di FM & MM All Control, sheet “Jam Kedatangan Supplier”.",
-      "Supplier yang PO-nya sudah di-scan diarahkan ke area inbound dan mendaftar di loket admin untuk validasi PO.",
-      "Staff inbound memberikan nomor antrian per kategori sesuai urutan waktu kedatangan, lalu memvalidasi PO dan surat jalan.",
-      "Staff inbound membuka pintu loading dock dan memanggil supplier sesuai nomor antrian.",
-      "Supplier menempatkan mobil di loading dock sesuai kategori SKU.",
-    ]),
-    { kind: "table", caption: "Pintu loading dock per kategori", head: ["Pintu dock", "Kategori SKU"], rows: [["5 – 7", "Rempah dan pengiriman via ekspedisi"], ["8 & 9", "Dry Frozen, Dry HV, Dry Chill, Protein"], ["10 & 11", "BSP"], ["12 – 17", "Buah"]] },
-    steps(8, [
-      "Siapkan pallet dan keranjang. Isi data PO di Internal Tools, termasuk perubahan PO, inbound susulan, dan inbound tambahan.",
-      "Cek PO lalu scan barcode PO di warehouse app inbound inventory sesuai IK - Cara Pengisian Warehouse App Inbound Inventory.",
-      "Turunkan produk dari mobil supplier dengan hati-hati — tidak dilempar, tidak dibanting.",
-      "QC menyortir bahan baku sesuai standar sampling dan spesifikasi Segari.",
-    ]),
-    { kind: "bad", title: "Handling defect & karantina", text: "Jika kualitas bahan baku tidak sesuai (defect), QC wajib memisahkan dan mengembalikannya ke supplier.", items: ["Defect yang tidak bisa dikembalikan → pindahkan ke area karantina.", "Tindak lanjuti sesuai SOP - Penanganan Produk Potensi Defect dan Recall Produk."] },
-    { kind: "warn", title: "Barang beli putus dari marketplace", text: "Rekam seluruh proses pengecekan atau unboxing SKU. Jika varian kurang atau fisik tidak sesuai PO, segera info Supervisor dan Tim Category di grup WA inbound x category, maksimal 24 jam setelah barang diterima." },
-    steps(12, [
-      "Susun SKU di atas pallet dan/atau di dalam keranjang (khusus curah). Isi keranjang tidak boleh melebihi tinggi keranjang, dan semua keranjang diletakkan di atas pallet.",
-      "Input data SKU dan upload surat jalan ke warehouse app. Cetak label inbound dan tempel di setiap keranjang atau kardus — tidak menimpa stiker QR keranjang dan tidak tertutup stiker lain.",
-      "Cetak goods receipt 2 rangkap, beri cap dan tanda tangan, lalu minta tanda tangan QC, staff validasi inbound, dan supplier/driver. Serahkan 1 rangkap ke supplier.",
-      "Foto dan upload goods receipt yang sudah ditandatangani ke internal tools.",
-      "Operator mengantar SKU ke gudang Raw Material. Catat serah terima di warehouse app goods movement.",
-    ]),
-  ] },
-  { id: "b", label: "B. Inbound PC Dry Goods", title: "B. Inbound Supplier PC Dry Goods (DMG)", blocks: [
-    steps(1, [
-      "Mobil supplier tiba dan menunggu antrian di area parkir.",
-      "Supplier meletakkan PO di keranjang area penerimaan. Admin Inbound scan PO untuk mencatat waktu kedatangan, lalu memanggil supplier sesuai urutan kedatangan aktual.",
-      "Siapkan pallet. Admin cek dan scan barcode PO sesuai IK - Cara Pengisian Warehouse App Inbound Inventory SKU Dry Goods.",
-      "Driver/TKBM menurunkan produk dengan hati-hati, tidak dilempar, tidak dibanting, tidak menyentuh lantai, dan disusun rapi di pallet Area Staging Inbound.",
-      "Satu pengiriman = satu expired date. Jika lebih dari satu ED, supplier mencantumkannya di surat jalan dan memisahkan produk per ED.",
-      "Cek kuantitas (fisik vs dokumen — jika kurang, coret dan tulis jumlah aktual di surat jalan) dan kualitas (kemasan tidak robek, penyok, atau bocor; ED sesuai spesifikasi).",
-    ]),
-    { kind: "warn", title: "Barang ditolak (reject)", text: "Barang tidak sesuai spesifikasi atau melebihi kuantitas PO. Via ekspedisi: laporkan ke Staff Category untuk proses return. Via driver supplier: barang wajib dibawa kembali saat itu juga." },
-    steps(7, [
-      "Input data SKU dan upload surat jalan. SKU tanpa gambar di WH Apps: foto inner pack dan input quantity inner pack.",
-      "Tulis zona besar rekomendasi WH Apps di setiap karton. Susun di pallet per zona dengan prinsip FEFO (kosmetik, personal care) atau FIFO (produk non-expired).",
-    ]),
-    { kind: "table", caption: "Batas tumpukan kardus di atas pallet (jika tidak tercantum di kemasan)", head: ["Jenis", "Ukuran", "Maks. tumpukan"], rows: [["Kardus besar", "Panjang > 45 cm dan/atau tinggi > 30 cm", "5"], ["Kardus sedang & kecil", "Panjang ≤ 45 cm dan tinggi ≤ 30 cm", "8"]] },
-    { kind: "p", text: "Jika kemasan mencantumkan batas tumpukan, ikuti kemasan. Jumlah tumpukan dapat disesuaikan saat pallet terbatas, dengan approval SPV." },
-    steps(9, [
-      "Zona besar berbeda → pallet terpisah. SKU sama dengan ED berbeda → pallet terpisah (FEFO).",
-      "Cetak goods receipt 2 rangkap, cap dan tanda tangan, serahkan 1 rangkap ke supplier, lalu foto dan upload ke internal tools.",
-    ]),
-  ] },
-  { id: "c", label: "C. Inbound FC", title: "C. Inbound Supplier FC (Fulfillment Center)", blocks: [
-    steps(1, [
-      "Supplier datang ke gudang FC sesuai jadwal warehouse transfer dan PO dari tim category.",
-      "Supplier menunjukkan surat jalan ke TL/Captain. TL/Captain memastikan gudang penerima sudah sesuai.",
-      "TL/Captain scan barcode PO dengan PDT di laman inbound app.",
-      "Staff inbound menurunkan produk dengan hati-hati — tidak dilempar, tidak dibanting.",
-    ]),
-    { kind: "bad", title: "Handling defect & karantina", text: "Barang rusak yang ditemukan saat penurunan atau penerimaan awal, sebelum sampling QC:", items: ["Pisahkan dan beri penanda Karantina.", "Tempatkan di area hold/defect agar tidak tercampur good stock.", "Jangan langsung dikategorikan defect final — tunggu verifikasi QC.", "Catat sebagai defect dari supplier, bukan mishandling tim FC."] },
-    { kind: "table", caption: "Standar sampling per kategori", head: ["Kategori", "Pengecekan", "Acuan"], rows: [["Poultry", "Quality (sampling)", "Tabel Parameter Inbound Kategori BSP, SOP Sampling Frozen Poultry"], ["Telur", "Expired date", "Master Specification Table"], ["Yakult", "Expired date", "Table Specbook Dry"], ["Es krim", "Expired date + handling", "Table Specbook Dry, SOP Handling Ice Cream"], ["Roti", "Expired date", "Table Specbook Dry"], ["TukuCur", "Expired date", "Master Specification Table (4R)"]] },
-    steps(5, [
-      "SKU yang tidak lolos quality dimasukkan ke keranjang terpisah, quantity-nya diinfokan ke TL/Captain, lalu dikembalikan ke supplier.",
-      "Hitung quantity fisik. Lebih dari PO → terima sebanyak quantity PO. Kurang dari PO → terima sebanyak quantity fisik. Laporkan selisih ke grup “Store SDD x Category”.",
-      "Input quantity diterima dan reject di inbound app, tanda tangan surat jalan, foto dan upload, lalu klik Simpan & Selesai.",
-      "Cetak GR 2 rangkap, beri cap dan tanda tangan, berikan 1 rangkap ke driver supplier.",
-      "Putaway di WH Apps: Goods Movements → Putaway → Inbound Supplier, sesuai Pedoman Putaway. Staging sesuai Item Location Route.",
-    ]),
-  ] },
-  { id: "d", label: "D. Ketentuan Tambahan", title: "D. Ketentuan Tambahan", blocks: [
-    { kind: "bad", title: "1. Supplier tidak membawa PO", text: "PO wajib dibawa: kertas tidak basah, barcode bisa di-scan, dan informasi sesuai tim category. Kedatangan di luar tanggal PO → inbound ditolak. Jika supplier datang tanpa PO:", items: ["Info ke tim category via grup WA — PC (DMT & DMG): Group WA inbound x category; FC: Group WA Store SDD x Category.", "Tim category memutuskan inbound diterima atau tidak, via grup WA.", "Jika diterima, supplier mencetak PO hardcopy di luar gudang."] },
-    { kind: "h", text: "2. Supplier datang terlambat" },
-    { kind: "table", caption: "Jam inbound supplier", head: ["Kategori", "Jam inbound (WIB)"], rows: [["Telur (FC)", "03.00"], ["Poultry (FC)", "14.00"], ["Buah, BSP, Rempah & Dry", "09.00 – 17.00"], ["Mixed & 4R, Daging Fresh", "09.00 – 17.00"], ["Sayur", "09.00 – 02.00"], ["DMG", "09.00 – 17.00"]] },
-    steps(1, [
-      "Supplier yang tiba sebelum 09.00 WIB wajib menunggu sampai 09.00 WIB.",
-      "Jika terlambat, tim category menginfokan jam keterlambatan ke SPV/TL via grup WA. SPV/TL menginfokan kebutuhan manpower.",
-      "Tanpa info keterlambatan, tim gudang berhak menolak inbound supplier.",
-      "Semua ketidaksesuaian dan dampak biayanya wajib dilaporkan di EOD Report oleh SPV.",
-    ]),
-  ] },
-  { id: "e", label: "E. Relokasi Double Plano", title: "E. Ketentuan Relokasi Double Plano", blocks: [
-    { kind: "p", text: "Double planogram adalah kondisi sementara saat 1 SKU tercatat atau ditempatkan di lebih dari 1 lokasi aktif." },
-    steps(1, [
-      "Hanya diperbolehkan sementara: setelah inbound pagi sampai 12.00, dan setelah inbound malam sampai 22.00.",
-      "Setelah itu TL/Captain/PIC inbound wajib relokasi dan normalisasi sehingga setiap SKU hanya punya 1 lokasi aktif. Identifikasi lewat Dashboard planogram.",
-      "Pindahkan SKU ke lokasi aktif final dan lakukan putaway final di WH Apps.",
-      "Pastikan tidak ada sisa SKU di lokasi lama, tidak ada SKU tanpa ILR, dan susunan sesuai SOP Pengaturan Susunan Staging SKU di FC.",
-    ]),
-  ] },
-];
-const SIGNOFF = [
-  { label: "Disiapkan oleh", people: [{ name: "Mardha Tillah", role: "Change Management" }, { name: "Siti Rahmi", role: "Food Safety & Quality" }] },
-  { label: "Disetujui oleh", people: [{ name: "Christofhorus Sugiharto", role: "Warehouse Asst. Manager" }, { name: "Fikri Abdul Malik", role: "FC & Logistik Manager" }] },
-  { label: "Diketahui oleh", people: [{ name: "Bagas Pirma Nugraha", role: "Processing Center Lead" }, { name: "Febriyanto Ramadhan", role: "DMG SPV" }, { name: "Goldena Meydiana", role: "FC Area Lead" }] },
-];
-const VERSIONS = [{ rev: 11, date: "15 Okt 2025" }, { rev: 10, date: "3 Jun 2025" }, { rev: 9, date: "14 Jan 2025" }];
-
 const PROMPTS = [
   "Apa yang harus dilakukan jika supplier tidak membawa PO?",
   "Berapa batas maksimal tumpukan kardus sedang di atas palet?",
   "Bagaimana alur handling barang defect di FC?",
 ];
-const ANSWERS = {
-  po: { intro: "Jika supplier datang tanpa PO, lakukan 3 langkah ini:", items: ["Info ke tim category via grup WA — PC (DMT & DMG): Group WA inbound x category; FC: Group WA Store SDD x Category.", "Tunggu keputusan tim category (diterima atau tidak) di grup WA.", "Jika diterima, supplier mencetak PO hardcopy di luar gudang, lalu inbound diproses."], note: "Supplier yang datang di luar tanggal pengantaran di PO tetap ditolak.", sources: [{ label: "SOP-DC-INV-007 · D.1 Supplier tidak membawa PO", sec: "d" }] },
-  stack: { intro: "Kardus sedang (panjang ≤ 45 cm dan tinggi ≤ 30 cm): maksimal 8 tumpukan.", items: ["Berlaku jika kemasan tidak mencantumkan batas tumpukan. Jika ada, ikuti label kardus.", "Kardus besar (panjang > 45 cm dan/atau tinggi > 30 cm): maksimal 5 tumpukan.", "Boleh disesuaikan saat pallet terbatas, dengan approval SPV."], sources: [{ label: "SOP-DC-INV-007 · B. Inbound PC Dry Goods — Batas tumpukan", sec: "b" }] },
-  defect: { intro: "Alur handling barang defect saat inbound di FC:", items: ["Pisahkan barang rusak dan beri penanda Karantina — sebelum sampling QC.", "Taruh di area hold/defect agar tidak tercampur good stock.", "Tunggu verifikasi QC; jangan langsung dicatat sebagai defect final.", "Catat sebagai defect dari supplier, bukan mishandling tim FC.", "SKU yang tidak lolos quality: keranjang terpisah, info qty ke TL/Captain, return ke supplier."], sources: [{ label: "SOP-DC-INV-007 · C. Inbound FC — Handling defect", sec: "c" }, { label: "SOP-DC-INV-007 · C. Inbound FC — Standar sampling", sec: "c" }] },
-  late: { intro: "Jam inbound supplier (WIB): Telur FC 03.00, Poultry FC 14.00, Sayur 09.00 – 02.00, kategori lain dan DMG 09.00 – 17.00.", items: ["Tiba sebelum 09.00 → supplier wajib menunggu.", "Terlambat → tim category info SPV/TL via grup WA; SPV/TL siapkan manpower.", "Tanpa info keterlambatan, gudang berhak menolak inbound."], sources: [{ label: "SOP-DC-INV-007 · D.2 Supplier datang terlambat", sec: "d" }] },
-  none: { intro: "Saya belum menemukan jawaban pasti di dokumen yang terindeks.", items: ["Coba sebutkan area (PC, DMG, atau FC) dan kategori SKU.", "Atau tanyakan langsung ke TL/Captain shift Anda."] },
-};
 </script>

@@ -13,7 +13,6 @@ const P = {
   link: ['M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71', 'M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71'],
   download: ['M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4', 'm7 10 5 5 5-5', 'M12 15V3'],
   alert: ['m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3', 'M12 9v4', 'M12 17h.01'],
-  info: ['M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20z', 'M12 16v-4', 'M12 8h.01'],
   send: ['M14.536 21.686a.5.5 0 0 0 .937-.024l6.5-19a.496.496 0 0 0-.635-.635l-19 6.5a.5.5 0 0 0-.024.937l7.93 3.18a2 2 0 0 1 1.112 1.11z', 'm21.854 2.147-10.94 10.939'],
   check: ['M20 6 9 17l-5-5'],
   chevR: ['m9 18 6-6-6-6'],
@@ -32,67 +31,91 @@ const Logo = ({ mark, h }) => html`<span className="ic" dangerouslySetInnerHTML=
 const initials = n => String(n).trim().split(/\s+/).slice(0, 2).map(w => w[0] || '').join('').toUpperCase();
 const Avatar = ({ name, size }) => html`<span className="avatar" title=${name} style=${{ width: size, height: size, fontSize: Math.round(size * .36) }}>${initials(name)}</span>`;
 
-// ------------------------------------------------------------ data helpers
+// ------------------------------------------------------------ helpers
 const USER = { name: 'Rina Saputri', first: 'Rina', role: 'Staf Gudang / TL' };
-const FLAGSHIP = 'inv007';
 const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
 const fmtDate = iso => { const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso || ''); return m ? Number(m[3]) + ' ' + MON[Number(m[2]) - 1] + ' ' + m[1] : '–'; };
 const todayIso = () => { const d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); };
-const TYPE_CODE = { sop: 'SOP', ik: 'IK', spec: 'Specbook', safety: 'SOP' };
 const typeOf = id => TYPES.find(t => t.id === id) || TYPES[0];
 const deptOf = id => DEPTS.find(d => d.id === id);
-const docTitle = d => d.user || d.id === FLAGSHIP ? d.title : d.code + ' - ' + d.title;
-const docVersions = d => d.full ? VERSIONS : d.versions || [{ rev: d.rev, date: d.date }];
+const revLabel = d => d.versions.length ? String(d.versions[0].rev) : '–';
+const docTitle = d => d.code && d.code !== TYPE_SHORT[d.type] && /\d/.test(d.code) ? d.title : (d.code ? d.code + ' - ' : '') + d.title;
+const TYPE_SHORT = { sop: 'SOP', ik: 'IK', spec: 'Specbook', safety: 'SOP' };
+const applies = d => d.areas.map(x => (deptOf(x) || {}).short).filter(Boolean).join(' · ') || '–';
 
-const SECS = SECTIONS.map(s => ({ ...s, blocks: s.blocks.map((b, j) => ({ ...b, aid: 'blk-' + s.id + '-' + j,
-  sub: b.kind === 'h' ? b.text : b.kind === 'table' ? b.caption : (b.kind === 'bad' || b.kind === 'warn') ? b.title : null })) }));
+/** Library row from the sheet → what the UI needs. */
+const prepDoc = d => ({ ...d, areas: d.areas || [], keywords: d.keywords || [], versions: d.versions || [] });
 
-/** A published article from the sheet, shaped like a catalogue document. */
-function articleToDoc(a) {
-  const vers = (a.versions || []).slice().sort((x, y) => y.rev - x.rev).map(v => ({ rev: v.rev, date: fmtDate(v.effectiveDate), note: v.note }));
-  const latest = vers[0] || { rev: 1, date: '–' };
-  return { id: 'a-' + a.id, code: TYPE_CODE[a.type] || 'SOP', title: a.title, short: a.title, type: a.type, depts: a.areas || [],
-    rev: latest.rev, date: latest.date, pages: null, applies: (a.areas || []).map(x => (deptOf(x) || {}).short).filter(Boolean).join(' · ') || '–',
-    body: a.body || '', keywords: a.keywords || [], versions: vers, user: true };
-}
-
-/** Splits free text into paragraphs and numbered step lists. */
-function bodyBlocks(body) {
-  return String(body).split(/\n\s*\n/).map(p => p.trim()).filter(Boolean).map(p => {
-    const lines = p.split('\n').map(l => l.trim()).filter(Boolean);
-    if (lines.every(l => /^\d+[.)]\s+/.test(l))) return { kind: 'steps', items: lines.map(l => ({ n: Number(/^\d+/.exec(l)[0]), text: l.replace(/^\d+[.)]\s+/, '') })) };
-    return { kind: 'p', text: p };
+/**
+ * Splits a body into sections ("# "), each with blocks: h ("## "), steps ("1. "), bullets ("- "), table ("| a | b |"), p.
+ * Text before the first "# " becomes its own untitled section, matching the server's chunking.
+ */
+function parseBody(body, fallbackTitle) {
+  const secs = [];
+  let cur = null, para = [];
+  const sec = title => { cur = { id: 's' + secs.length, title, blocks: [] }; secs.push(cur); };
+  const last = () => cur.blocks[cur.blocks.length - 1];
+  const flush = () => { if (para.length) { cur.blocks.push({ kind: 'p', text: para.join('\n') }); para = []; } };
+  String(body || '').split('\n').forEach(raw => {
+    const line = raw.replace(/\s+$/, '');
+    if (/^# /.test(line)) { flush(); sec(line.slice(2).trim()); return; }
+    if (!cur) { if (!line.trim()) return; sec(fallbackTitle); }
+    let m;
+    if (!line.trim()) { flush(); return; }
+    if (/^## /.test(line)) { flush(); cur.blocks.push({ kind: 'h', text: line.slice(3).trim() }); return; }
+    if ((m = /^(\d+)[.)]\s+(.*)$/.exec(line))) { flush(); const b = last(); const it = { n: Number(m[1]), text: m[2] }; if (b && b.kind === 'steps') b.items.push(it); else cur.blocks.push({ kind: 'steps', items: [it] }); return; }
+    if ((m = /^[-•]\s+(.*)$/.exec(line))) { flush(); const b = last(); if (b && b.kind === 'bullets') b.items.push(m[1]); else cur.blocks.push({ kind: 'bullets', items: [m[1]] }); return; }
+    if (/^\|.*\|$/.test(line)) {
+      flush();
+      const cells = line.slice(1, -1).split('|').map(c => c.trim());
+      if (cells.every(c => /^:?-{2,}:?$/.test(c))) return;
+      const b = last();
+      if (b && b.kind === 'table') b.rows.push(cells); else cur.blocks.push({ kind: 'table', head: cells, rows: [] });
+      return;
+    }
+    para.push(line);
   });
+  flush();
+  secs.forEach(s => s.blocks.forEach((b, j) => { b.aid = 'blk-' + s.id + '-' + j; }));
+  return secs;
 }
 
-// ------------------------------------------------------------ search + Mancu
-const STOP = new Set('apa yang harus jika dan untuk bagaimana berapa dari ada atau dengan saat tidak sudah pada ini itu bisa kalau mana'.split(' '));
+/** "**bold**" → <strong>. */
+const rich = text => String(text).split(/(\*\*[^*]+\*\*)/g).map((part, i) => /^\*\*[^*]+\*\*$/.test(part) ? html`<strong key=${i}>${part.slice(2, -2)}</strong>` : part);
+
+/** "Label: Name | Role; Name | Role" per line. */
+const parseSignoff = text => String(text || '').split('\n').map(l => l.trim()).filter(Boolean).map(l => {
+  const i = l.indexOf(':');
+  return { label: i > 0 ? l.slice(0, i).trim() : l, people: (i > 0 ? l.slice(i + 1) : '').split(';').map(p => p.split('|').map(x => x.trim())).filter(p => p[0]).map(p => ({ name: p[0], role: p[1] || '' })) };
+});
+
+// ------------------------------------------------------------ keyword search
+const STOP = new Set('apa yang harus jika dan untuk bagaimana berapa dari ada atau dengan saat tidak sudah pada ini itu bisa kalau mana kapan siapa'.split(' '));
 const words = q => q.toLowerCase().split(/[^a-z0-9]+/).filter(w => w.length >= 3 && !STOP.has(w));
-const SEC_TEXT = SECS.map(sec => ({ sec, text: sec.blocks.map(b => [b.text, b.title, b.caption,
-  ...(b.items || []).map(i => typeof i === 'string' ? i : i.text),
-  ...(b.kind === 'kv' ? b.rows.map(r => r.v) : []),
-  ...(b.kind === 'table' ? b.rows.map(r => r.join(' ')) : [])].filter(Boolean).join(' ')).join(' ').toLowerCase() }));
-const docHay = d => (d.code + ' ' + d.title + ' ' + d.short + ' ' + (d.keywords || []).join(' ')).toLowerCase();
+const docHay = d => (d.code + ' ' + d.title + ' ' + d.short + ' ' + d.keywords.join(' ')).toLowerCase();
 
 function kwSearch(q, docs) {
   const ws = words(q);
   if (!ws.length) return [];
-  const secs = SEC_TEXT.map(x => ({ x, n: ws.filter(w => x.text.includes(w)).length })).filter(o => o.n).sort((a, b) => b.n - a.n).slice(0, 3).map(o => ({ sec: o.x.sec }));
-  const ds = docs.map(d => ({ d, n: ws.filter(w => docHay(d).includes(w)).length })).filter(o => o.n).sort((a, b) => b.n - a.n).slice(0, 5).map(o => ({ d: o.d }));
-  return [...secs, ...ds];
+  const secs = [];
+  docs.forEach(d => {
+    if (!d.versions.length) return;
+    parseBody(d.versions[0].body, d.title).forEach(s => {
+      const text = (s.title + ' ' + JSON.stringify(s.blocks)).toLowerCase();
+      const n = ws.filter(w => text.includes(w)).length;
+      if (n) secs.push({ d, s, n });
+    });
+  });
+  const ds = docs.map(d => ({ d, n: ws.filter(w => docHay(d).includes(w)).length })).filter(o => o.n);
+  return [...secs.sort((a, b) => b.n - a.n).slice(0, 5), ...ds.sort((a, b) => b.n - a.n).slice(0, 5)];
 }
 
-function answerFor(text, docs) {
-  const t = text.toLowerCase();
-  const key = /tumpuk|kardus|palet|pallet/.test(t) ? 'stack' : /defect|karantina|rusak|reject/.test(t) ? 'defect'
-    : /terlambat|telat|jam/.test(t) ? 'late' : /\bpo\b|purchase/.test(t) ? 'po' : null;
-  if (key) return { ...ANSWERS[key], sources: (ANSWERS[key].sources || []).map(s => ({ ...s, docId: FLAGSHIP })) };
-  // Fall back to documents whose title or Gemini keywords match the question.
-  const ws = words(text);
-  const hits = ws.length ? docs.map(d => ({ d, n: ws.filter(w => docHay(d).includes(w)).length })).filter(o => o.n).sort((a, b) => b.n - a.n).slice(0, 3) : [];
-  if (hits.length) return { intro: 'Saya menemukan dokumen yang paling relevan dengan pertanyaan ini:', items: hits.map(o => docTitle(o.d) + ' (' + o.d.code + ', Rev ' + o.d.rev + ').'),
-    note: 'Buka dokumennya untuk langkah lengkap.', sources: hits.map(o => ({ label: o.d.code + ' · ' + o.d.short, docId: o.d.id })) };
-  return ANSWERS.none;
+/** Used when Gemini is not configured: point at the closest documents. */
+function localAnswer(text, docs) {
+  const hits = kwSearch(text, docs).slice(0, 3);
+  if (!hits.length) return { intro: 'Saya belum menemukan jawaban pasti di dokumen yang terindeks.', items: ['Coba sebutkan area (PC, DMG, atau FC) dan kategori SKU.', 'Atau tanyakan langsung ke TL/Captain shift Anda.'], note: '', sources: [] };
+  return { intro: 'Bagian dokumen yang paling relevan dengan pertanyaan ini:', items: hits.map(h => h.s ? h.d.code + ' · ' + h.s.title : docTitle(h.d)), note: '',
+    sources: hits.map(h => ({ docId: h.d.id, sec: h.s ? h.s.id : null, label: h.s ? h.d.code + ' · ' + h.s.title : h.d.code + ' · ' + h.d.short })) };
 }
 
 // ------------------------------------------------------------ server bridge
@@ -101,6 +124,8 @@ const run = (fn, ...args) => new Promise((ok, fail) => {
   if (!hasServer) return ok(null);
   google.script.run.withSuccessHandler(ok).withFailureHandler(fail)[fn](...args);
 });
+// Local preview: read the seed the build script drops next to the page.
+const loadLibrary = () => hasServer ? run('getLibrary') : fetch('seed.json').then(r => r.json()).catch(() => []);
 
 function copyText(text) {
   try { if (navigator.clipboard && window.isSecureContext) return navigator.clipboard.writeText(text); } catch (e) {}
@@ -118,20 +143,20 @@ const KW_SUGGEST = ['inbound', 'supplier', 'PO', 'karantina', 'defect', 'expired
 
 function App() {
   const [s, setS] = useState({
-    step: 'home', homeView: 'search', type: 'sop', dept: null, docId: null, rev: null, active: 'umum', verOpen: false, anim: true,
+    step: 'home', homeView: 'search', type: 'sop', dept: null, docId: null, verIdx: 0, active: 's0', verOpen: false, anim: true,
     q: '', focus: null, homeQ: null, homeAns: null, homeTyping: false, homeTab: 'mancu', browseQ: '',
     chatOpen: false, msgs: [], typing: false, draft: '', toast: null, w: NEW_WRITER(), saving: false
   });
   const set = patch => setS(p => ({ ...p, ...(typeof patch === 'function' ? patch(p) : patch) }));
-  const [articles, setArticles] = useState([]);
+  const [docs, setDocs] = useState(null);
   const [vw, setVw] = useState(window.innerWidth);
   const hdrRef = useRef(), heroRef = useRef(), browseRef = useRef(), headRef = useRef(), bodyRef = useRef();
-  const timers = useRef({});
+  const timers = useRef({}), askSeq = useRef(0);
   const sRef = useRef(s); sRef.current = s;
-
-  const docs = [...DOCS, ...articles.map(articleToDoc)];
-  const docsRef = useRef(docs); docsRef.current = docs;
+  const lib = docs || [];
+  const docsRef = useRef(lib); docsRef.current = lib;
   const findDoc = id => docsRef.current.find(d => d.id === id);
+  const latest = docsRef.current.filter(d => d.versions.length).sort((a, b) => (b.versions[0].effectiveDate > a.versions[0].effectiveDate ? 1 : -1))[0];
 
   // ---- navigation
   const go = (patch, after) => {
@@ -145,31 +170,34 @@ function App() {
   const openDoc = (d, sec) => {
     if (!d) return;
     const cur = sRef.current;
-    const dept = d.depts.includes(cur.dept) ? cur.dept : d.depts[0] || null;
-    go({ step: 'reader', docId: d.id, type: d.type, dept, rev: d.rev, active: 'umum', q: '' }, sec ? () => setTimeout(() => scrollToSec(sec), 320) : null);
+    const dept = d.areas.includes(cur.dept) ? cur.dept : d.areas[0] || null;
+    go({ step: 'reader', docId: d.id, type: d.type, dept, verIdx: 0, active: 's0', q: '' }, sec ? () => setTimeout(() => scrollToSec(sec), 320) : null);
     if (hasServer) google.script.history.replace(null, { doc: d.id });
   };
   const goHome = () => { go({ step: 'home', homeView: 'search', docId: null, q: '', homeQ: null, homeAns: null, homeTyping: false }); if (hasServer) google.script.history.replace(null, {}); };
   const goBrowse = () => go({ step: 'home', homeView: 'browse', docId: null });
   const flash = t => { clearTimeout(timers.current.toast); set({ toast: t }); timers.current.toast = setTimeout(() => set({ toast: null }), 2200); };
 
-  // ---- Mancu
-  const aiMsg = a => ({ ai: true, intro: a.intro, items: a.items, note: a.note, sources: a.sources || [] });
+  // ---- Mancu: Gemini on the server, local document search when no key is set
+  const aiMsg = a => ({ ai: true, intro: a.intro, items: a.items || [], note: a.note || '', sources: a.sources || [] });
+  const answer = text => run('askMancu', text)
+    .then(a => a || localAnswer(text, docsRef.current))
+    .catch(err => ({ intro: (err && err.message) || 'Mancu sedang tidak tersedia. Coba lagi sebentar.', items: [], note: '', sources: [] }));
   const ask = text => {
     text = (text || '').trim();
     if (!text) return;
+    const seq = ++askSeq.current;
     set(p => ({ chatOpen: true, typing: true, draft: '', msgs: [...p.msgs, { user: true, text }] }));
-    clearTimeout(timers.current.ask);
-    timers.current.ask = setTimeout(() => set(p => ({ typing: false, msgs: [...p.msgs, aiMsg(answerFor(text, docsRef.current))] })), 1100);
+    answer(text).then(a => { if (seq === askSeq.current) set(p => ({ typing: false, msgs: [...p.msgs, aiMsg(a)] })); });
   };
   const askHome = text => {
     text = (text || '').trim();
     if (!text) { if (heroRef.current) heroRef.current.focus(); return; }
-    clearTimeout(timers.current.home);
+    const seq = ++askSeq.current;
     set({ q: text, homeQ: text, homeAns: null, homeTyping: true, homeTab: 'mancu' });
-    timers.current.home = setTimeout(() => set({ homeTyping: false, homeAns: answerFor(text, docsRef.current) }), 900);
+    answer(text).then(a => { if (seq === askSeq.current) set({ homeTyping: false, homeAns: aiMsg(a) }); });
   };
-  const openSource = src => { set({ chatOpen: false }); openDoc(findDoc(src.docId || FLAGSHIP), src.sec); };
+  const openSource = src => { set({ chatOpen: false }); openDoc(findDoc(src.docId), src.sec); };
 
   // ---- effects
   useEffect(() => {
@@ -189,24 +217,29 @@ function App() {
     window.addEventListener('keydown', onK);
     const ro = new ResizeObserver(() => document.documentElement.style.setProperty('--hdr', hdrH() + 'px'));
     if (hdrRef.current) ro.observe(hdrRef.current);
-    run('getArticles').then(list => {
-      if (list) setArticles(list);
-      if (hasServer) google.script.url.getLocation(loc => { const id = loc.parameter.doc; const d = id && docsRef.current.find(x => x.id === id); if (d) openDoc(d); });
-    }).catch(() => {});
+    loadLibrary().then(list => {
+      const all = (list || []).map(prepDoc);
+      docsRef.current = all;
+      setDocs(all);
+      if (hasServer) google.script.url.getLocation(loc => { const d = all.find(x => x.id === loc.parameter.doc); if (d) openDoc(d); });
+    }).catch(() => { setDocs([]); flash('Dokumen gagal dimuat'); });
     return () => { window.removeEventListener('resize', onR); window.removeEventListener('keydown', onK); ro.disconnect(); };
   }, []);
 
+  const readerDoc = s.step === 'reader' ? findDoc(s.docId) : null;
+  const readerVer = readerDoc && readerDoc.versions[s.verIdx];
+  const readerSecs = readerVer ? parseBody(readerVer.body, readerDoc.title) : [];
+
   useEffect(() => {
-    const doc = findDoc(s.docId);
-    if (s.step !== 'reader' || !doc || !doc.full) return;
+    if (!readerSecs.length) return;
     const onS = () => {
-      let act = SECS[0].id;
-      for (const x of SECS) { const el = document.getElementById('sec-' + x.id); if (el && el.getBoundingClientRect().top < hdrH() + 100) act = x.id; }
+      let act = readerSecs[0].id;
+      for (const x of readerSecs) { const el = document.getElementById('sec-' + x.id); if (el && el.getBoundingClientRect().top < hdrH() + 100) act = x.id; }
       if (act !== sRef.current.active) set({ active: act });
     };
     window.addEventListener('scroll', onS, { passive: true });
     return () => window.removeEventListener('scroll', onS);
-  }, [s.step, s.docId]);
+  }, [s.step, s.docId, s.verIdx, docs]);
 
   useEffect(() => { if (bodyRef.current) bodyRef.current.scrollTop = bodyRef.current.scrollHeight; }, [s.msgs, s.typing]);
 
@@ -214,10 +247,12 @@ function App() {
   const xwide = vw >= 1200, wide = vw >= 1024, mid = vw >= 640;
   const showHeaderSearch = s.step === 'list' || s.step === 'reader';
   const isWriter = s.step === 'writer';
+  const loading = docs === null;
+  const typingEl = html`<div className="typing"><span className="dot"></span>Mancu sedang membaca SOP…</div>`;
 
   // ================================================================= header
   const ql = s.q.trim().toLowerCase();
-  const searchHits = ql ? docs.filter(d => docHay(d).includes(ql)).slice(0, 5) : [];
+  const searchHits = ql ? lib.filter(d => docHay(d).includes(ql)).slice(0, 5) : [];
   const header = html`
     <header className="hdr" ref=${hdrRef}>
       <div className="hdr-in">
@@ -243,7 +278,7 @@ function App() {
                 ${searchHits.map(d => html`
                   <button key=${d.id} className="pop-row" onMouseDown=${e => { e.preventDefault(); headRef.current.blur(); openDoc(d); }}>
                     <span className="ic muted">${I('file')}</span>
-                    <span className="t"><b>${d.title}</b><span>${d.code} · ${d.applies}</span></span>
+                    <span className="t"><b>${d.title}</b><span>${d.code} · ${applies(d)}</span></span>
                   </button>`)}
                 ${!searchHits.length && html`<div className="pop-empty">Tidak ada dokumen yang cocok.</div>`}
                 <button className="pop-ask" onMouseDown=${e => { e.preventDefault(); ask(s.q); set({ q: '' }); headRef.current.blur(); }}>
@@ -263,9 +298,9 @@ function App() {
     </header>`;
 
   // ================================================================= home
-  const kwRes = s.homeQ ? kwSearch(s.homeQ, docs).map(r => r.sec
-    ? { key: 'sec-' + r.sec.id, title: r.sec.title, meta: 'SOP-DC-INV-007 · Inbound Supplier · Rev 11', open: () => openDoc(findDoc(FLAGSHIP), r.sec.id) }
-    : { key: r.d.id, title: r.d.title, meta: r.d.code + ' · ' + r.d.applies + ' · Rev ' + r.d.rev, open: () => openDoc(r.d) }) : [];
+  const kwRes = s.homeQ ? kwSearch(s.homeQ, lib).map(r => r.s
+    ? { key: r.d.id + r.s.id, title: r.s.title, meta: r.d.code + ' · ' + r.d.title + ' · Rev ' + revLabel(r.d), open: () => openDoc(r.d, r.s.id) }
+    : { key: r.d.id, title: r.d.title, meta: r.d.code + ' · ' + applies(r.d) + ' · Rev ' + revLabel(r.d), open: () => openDoc(r.d) }) : [];
   const ans = s.homeAns;
 
   const homeSearch = html`
@@ -275,11 +310,11 @@ function App() {
         <div className=${'hero-bar' + (s.focus === 'hero' ? ' focus' : '')}>
           ${I('search')}
           <input ref=${heroRef} value=${s.q} placeholder="Tanya Mancu atau cari dokumen…" aria-label="Tanya Mancu atau cari dokumen"
-            onChange=${e => { const v = e.target.value; if (!v) { clearTimeout(timers.current.home); set({ q: v, homeQ: null, homeAns: null, homeTyping: false }); } else set({ q: v }); }}
+            onChange=${e => { const v = e.target.value; if (!v) { askSeq.current++; set({ q: v, homeQ: null, homeAns: null, homeTyping: false }); } else set({ q: v }); }}
             onFocus=${() => set({ focus: 'hero' })} onBlur=${() => set(p => p.focus === 'hero' ? { focus: null } : {})}
             onKeyDown=${e => { if (e.key === 'Enter') { askHome(s.q); e.target.blur(); } }} />
           ${!s.q && html`<span className="keycap" title="Tekan / untuk mencari">/</span>`}
-          ${s.q && html`<button className="icon-btn" title="Hapus" aria-label="Hapus" onMouseDown=${e => { e.preventDefault(); clearTimeout(timers.current.home); set({ q: '', homeQ: null, homeAns: null, homeTyping: false }); }}>${I('x', 18)}</button>`}
+          ${s.q && html`<button className="icon-btn" title="Hapus" aria-label="Hapus" onMouseDown=${e => { e.preventDefault(); askSeq.current++; set({ q: '', homeQ: null, homeAns: null, homeTyping: false }); }}>${I('x', 18)}</button>`}
           <button className="spark-btn" title="Tanya Mancu" aria-label="Tanya Mancu" onMouseDown=${e => { e.preventDefault(); askHome(s.q); }}>${I('sparkles', 22)}</button>
         </div>
         ${!s.homeQ && html`
@@ -292,37 +327,37 @@ function App() {
         <div className="results">
           <div className="tabs sm" role="tablist">
             <button role="tab" className=${'tab' + (s.homeTab === 'mancu' ? ' on' : '')} onClick=${() => set({ homeTab: 'mancu' })}><span>Jawaban Mancu</span></button>
-            <button role="tab" className=${'tab' + (s.homeTab === 'kw' ? ' on' : '')} onClick=${() => set({ homeTab: 'kw' })}><span>Hasil kata kunci</span><span className="n">${kwRes.length}</span></button>
+            <button role="tab" className=${'tab' + (s.homeTab === 'kw' ? ' on' : '')} onClick=${() => set({ homeTab: 'kw' })}><span>Hasil kata kunci</span><span className="n">${loading ? '–' : kwRes.length}</span></button>
           </div>
           ${s.homeTab === 'mancu' && html`
             <div className="ans">
               <span className="ans-label"><span className="ic orange">${I('sparkles', 14)}</span>Mancu<span className="q">· “${s.homeQ}”</span></span>
-              ${s.homeTyping && html`<div className="typing"><span className="dot"></span>Mancu sedang membaca SOP…</div>`}
+              ${s.homeTyping && typingEl}
               ${ans && html`
                 <span className="ans-intro">${ans.intro}</span>
-                <ol className="numlist">${ans.items.map((t, i) => html`<li key=${i}><span>${i + 1}.</span><span>${t}</span></li>`)}</ol>
+                ${ans.items.length > 0 && html`<ol className="numlist">${ans.items.map((t, i) => html`<li key=${i}><span>${i + 1}.</span><span>${rich(t)}</span></li>`)}</ol>`}
                 ${ans.note && html`<span className="ans-note">${ans.note}</span>`}
-                ${ans.sources && ans.sources.length > 0 && html`
+                ${ans.sources.length > 0 && html`
                   <div className="src-links">
                     <span className="eyebrow">Sumber</span>
                     ${ans.sources.map(src => html`<button key=${src.label} className="src-link" onClick=${() => openSource(src)}><span>${src.label}</span>${I('arrowR', 16)}</button>`)}
                   </div>`}
                 <div className="ans-foot">
-                  <button className="link-strong" onClick=${() => set({ chatOpen: true, msgs: [{ user: true, text: s.homeQ }, aiMsg(ans)] })}><span>Lanjutkan di chat</span>${I('arrowR', 16)}</button>
+                  <button className="link-strong" onClick=${() => set({ chatOpen: true, msgs: [{ user: true, text: s.homeQ }, ans] })}><span>Lanjutkan di chat</span>${I('arrowR', 16)}</button>
                   <span className="disclaimer">Mancu bisa salah. Pastikan langkah kritis sesuai SOP yang dikutip.</span>
                 </div>`}
             </div>`}
           ${s.homeTab === 'kw' && html`
             <div className="hl-list" style=${{ paddingTop: 8 }}>
               ${kwRes.map(r => html`<button key=${r.key} className="hl-row" onClick=${r.open}><b>${r.title}</b><span>${r.meta}</span></button>`)}
-              ${!kwRes.length && html`<span className="empty">Tidak ada dokumen dengan kata kunci ini.</span>`}
+              ${!loading && !kwRes.length && html`<span className="empty">Tidak ada dokumen dengan kata kunci ini.</span>`}
             </div>`}
         </div>`}
     </div>`;
 
   const bq = s.browseQ.trim().toLowerCase();
-  const browseHits = bq ? docs.filter(d => (d.code + ' ' + d.title + ' ' + d.short).toLowerCase().includes(bq)) : [];
-  const countFor = (type, dept) => docs.filter(d => d.type === type && (!dept || d.depts.includes(dept))).length;
+  const browseHits = bq ? lib.filter(d => (d.code + ' ' + d.title + ' ' + d.short).toLowerCase().includes(bq)) : [];
+  const countFor = (type, dept) => lib.filter(d => d.type === type && (!dept || d.areas.includes(dept))).length;
   const homeBrowse = html`
     <div className="browse">
       <h1 className="page-title">Jelajahi dokumen</h1>
@@ -335,17 +370,17 @@ function App() {
       ${bq ? html`
         <div className="hl-list">
           <span style=${{ fontSize: 13, color: 'var(--muted)', paddingBottom: 4 }}>${browseHits.length ? browseHits.length + ' dokumen' : 'Tidak ada dokumen yang cocok.'}</span>
-          ${browseHits.map(d => html`<button key=${d.id} className="hl-row" onClick=${() => openDoc(d)}><b>${d.title}</b><span>${d.code} · ${typeOf(d.type).short} · ${d.applies} · Rev ${d.rev}</span></button>`)}
+          ${browseHits.map(d => html`<button key=${d.id} className="hl-row" onClick=${() => openDoc(d)}><b>${d.title}</b><span>${d.code} · ${typeOf(d.type).short} · ${applies(d)} · Rev ${revLabel(d)}</span></button>`)}
         </div>` : html`
         <div style=${{ display: 'flex', flexDirection: 'column', gap: 18 }}>
           <div className="pills">
-            ${TYPES.map(t => html`<button key=${t.id} className=${'pill' + (s.type === t.id ? ' on' : '')} onClick=${() => set({ type: t.id })}><span>${t.short}</span><span className="n">${countFor(t.id)}</span></button>`)}
+            ${TYPES.map(t => html`<button key=${t.id} className=${'pill' + (s.type === t.id ? ' on' : '')} onClick=${() => set({ type: t.id })}><span>${t.short}</span><span className="n">${loading ? '–' : countFor(t.id)}</span></button>`)}
           </div>
           <p style=${{ fontSize: 15, color: 'var(--sec2)' }}>${typeOf(s.type).desc}</p>
           <div className="area-list">
             ${DEPTS.map(d => { const c = countFor(s.type, d.id); return html`
               <button key=${d.id} className="area-row" disabled=${!c} onClick=${() => go({ step: 'list', dept: d.id })}>
-                <b>${d.label}</b><span>${c ? c + ' dokumen' : 'Belum ada dokumen'}</span><i>${I('chevR', 18)}</i>
+                <b>${d.label}</b><span>${loading ? 'Memuat…' : c ? c + ' dokumen' : 'Belum ada dokumen'}</span><i>${I('chevR', 18)}</i>
               </button>`; })}
           </div>
         </div>`}
@@ -362,7 +397,7 @@ function App() {
 
   // ================================================================= list
   const typeObj = typeOf(s.type), deptObj = deptOf(s.dept);
-  const listDocs = docs.filter(d => d.type === s.type && d.depts.includes(s.dept));
+  const listDocs = lib.filter(d => d.type === s.type && d.areas.includes(s.dept));
   const list = html`
     <div style=${{ display: 'flex', flexDirection: 'column', gap: 20 }}>
       <nav className="crumbs" aria-label="Breadcrumb">
@@ -378,52 +413,44 @@ function App() {
         <span style=${{ fontSize: 14, color: 'var(--sec2)' }}>${listDocs.length} dokumen</span>
       </div>
       <div className="doc-rows">
-        ${listDocs.map(d => html`
+        ${listDocs.map(d => { const v = d.versions[0]; return html`
           <button key=${d.id} className="doc-row" onClick=${() => openDoc(d)}>
             <span className="tile">${I('file')}</span>
-            <span className="t"><b>${docTitle(d)}</b><span className="meta"><span className="code">${d.code}</span><span>Rev ${d.rev} · Berlaku ${d.date}${d.pages ? ' · ' + d.pages + ' halaman' : ''}</span></span></span>
+            <span className="t"><b>${docTitle(d)}</b><span className="meta"><span className="code">${d.code}</span><span>Rev ${revLabel(d)} · Berlaku ${v ? fmtDate(v.effectiveDate) : '–'}${d.pages ? ' · ' + d.pages + ' halaman' : ''}</span></span></span>
             <i>${I('chevR', 18)}</i>
-          </button>`)}
+          </button>`; })}
       </div>
     </div>`;
 
   // ================================================================= reader
+  const block = b => {
+    switch (b.kind) {
+      case 'h': return html`<h3>${rich(b.text)}</h3>`;
+      case 'p': return html`<p className="prose">${rich(b.text)}</p>`;
+      case 'steps': return html`<ol className="steps">${b.items.map((it, i) => html`<li key=${i}><span>${it.n}.</span><span>${rich(it.text)}</span></li>`)}</ol>`;
+      case 'bullets': return html`<ul className="bullets">${b.items.map((t, i) => html`<li key=${i}><span>•</span><span>${rich(t)}</span></li>`)}</ul>`;
+      case 'table': return html`
+        <div className="tbl"><div className="tbl-scroll"><table>
+          <thead><tr>${b.head.map((h, i) => html`<th key=${i}>${h}</th>`)}</tr></thead>
+          <tbody>${b.rows.map((r, i) => html`<tr key=${i}>${r.map((c, j) => html`<td key=${j} style=${{ whiteSpace: j === 0 || c.length < 16 ? 'nowrap' : 'normal' }}>${rich(c)}</td>`)}</tr>`)}</tbody>
+        </table></div></div>`;
+    }
+    return null;
+  };
+
   const reader = () => {
-    const doc = findDoc(s.docId) || findDoc(FLAGSHIP);
-    const docT = typeOf(doc.type), dDept = deptOf(s.dept) || deptOf(doc.depts[0]) || DEPTS[0];
-    const vers = docVersions(doc), viewV = vers.find(v => v.rev === s.rev) || vers[0];
-    const isCurrent = s.rev === doc.rev;
-    const showToc = !!doc.full;
-    const toc = SECS.map(x => { const m = x.label.match(/^([A-E])\. (.*)$/); return { id: x.id, num: m ? m[1] : '·', name: m ? m[2] : x.label, label: x.label, on: x.id === s.active,
-      subs: x.blocks.filter(b => b.sub).map(b => ({ aid: b.aid, label: b.sub.replace(/^\d+\. /, '') })) }; });
-    const sideDocs = docs.filter(d => d.depts.includes(dDept.id));
+    const doc = readerDoc;
+    if (!doc) return html`<div className="article"><div className="article-in">${loading ? typingEl : html`<p className="prose">Dokumen tidak ditemukan.</p>`}</div></div>`;
+    const docT = typeOf(doc.type), dDept = deptOf(s.dept) || deptOf(doc.areas[0]) || DEPTS[0];
+    const vers = doc.versions, viewV = readerVer;
+    const isCurrent = s.verIdx === 0;
+    const secs = readerSecs;
+    const showToc = secs.length > 1;
+    const toc = secs.map(x => { const m = x.title.match(/^([A-Z])\.\s+(.*)$/); return { id: x.id, num: m ? m[1] : '·', name: m ? m[2] : x.title, label: x.title, on: x.id === s.active,
+      subs: x.blocks.filter(b => b.kind === 'h').map(b => ({ aid: b.aid, label: b.text.replace(/^\d+\.\s+/, '') })) }; });
+    const sideDocs = lib.filter(d => d.areas.includes(dDept.id));
+    const signoff = parseSignoff(doc.signoff);
     const cols = [xwide ? '280px' : null, 'minmax(0, 1fr)', showToc && wide ? '300px' : null].filter(Boolean).join(' ');
-    const block = b => {
-      switch (b.kind) {
-        case 'h': return html`<h3>${b.text}</h3>`;
-        case 'p': return html`<p className="prose">${b.text}</p>`;
-        case 'kv': return html`<div className="kv">${b.rows.map(r => html`<p key=${r.k} className="prose"><strong>${r.k}.</strong> ${r.v}</p>`)}</div>`;
-        case 'steps': return html`<ol className="steps">${b.items.map(it => html`<li key=${it.n}><span>${it.n}.</span><span>${it.text}</span></li>`)}</ol>`;
-        case 'table': return html`
-          <div className="tbl"><b>${b.caption}</b>
-            <div className="tbl-scroll"><table>
-              <thead><tr>${b.head.map(h => html`<th key=${h}>${h}</th>`)}</tr></thead>
-              <tbody>${b.rows.map((r, i) => html`<tr key=${i}>${r.map((c, j) => html`<td key=${j} style=${{ whiteSpace: j === 0 || c.length < 16 ? 'nowrap' : 'normal' }}>${c}</td>`)}</tr>`)}</tbody>
-            </table></div>
-          </div>`;
-        case 'bad': return html`
-          <div className="callout bad"><span className="ic">${I('alert', 24)}</span>
-            <div className="body"><span className="eyebrow">Langkah kritis</span><span className="t">${b.title}</span><span className="x">${b.text}</span>
-              <ul className="arrows">${b.items.map(li => html`<li key=${li}><span>→</span><span>${li}</span></li>`)}</ul>
-            </div>
-          </div>`;
-        case 'warn': return html`
-          <div className="callout warn"><span className="ic">${I('info', 24)}</span>
-            <div className="body"><span className="t">${b.title}</span><span className="x">${b.text}</span></div>
-          </div>`;
-      }
-      return null;
-    };
     const tocRow = t => html`
       <div key=${t.id} style=${{ display: 'flex', flexDirection: 'column' }}>
         <button className=${'toc-row' + (t.on ? ' on' : '')} onClick=${() => scrollToSec(t.id)}><span className="n">${t.num}</span><span>${t.name}</span></button>
@@ -450,58 +477,58 @@ function App() {
             <span className="eyebrow lg">${docT.long}</span>
             <h1 className="r-title">${docTitle(doc)}</h1>
             <div className="r-meta">
-              <span className="code">${doc.id === FLAGSHIP || doc.user ? doc.code : doc.code + ' · ' + doc.short}</span>
-              <span className="dotsep">·</span><span>Berlaku ${viewV ? viewV.date : doc.date}</span><span className="dotsep">·</span>
+              <span className="code">${doc.code}</span>
+              <span className="dotsep">·</span><span>Berlaku ${viewV ? fmtDate(viewV.effectiveDate) : '–'}</span>
+              ${vers.length > 0 && html`<span className="dotsep">·</span>
               <span className="rev-wrap">
                 <button className="rev-btn" aria-haspopup="listbox" aria-expanded=${s.verOpen} onClick=${() => set({ verOpen: !s.verOpen })}>
-                  <span>Rev ${s.rev}</span><span className=${'rev-pill' + (isCurrent ? '' : ' old')}>${isCurrent ? 'Terbaru' : 'Lama'}</span><span className="ic muted">${I('chevD', 16)}</span>
+                  <span>Rev ${viewV.rev}</span><span className=${'rev-pill' + (isCurrent ? '' : ' old')}>${isCurrent ? 'Terbaru' : 'Lama'}</span><span className="ic muted">${I('chevD', 16)}</span>
                 </button>
                 ${s.verOpen && html`
                   <div className="rev-pop" role="listbox">
                     <div className="eyebrow">Riwayat versi</div>
-                    ${vers.map(v => html`
-                      <button key=${v.rev} className=${'rev-opt' + (v.rev === s.rev ? ' on' : '')} onClick=${() => set({ rev: v.rev, verOpen: false })}>
-                        <span className="t"><b>Rev ${v.rev}</b><span>Berlaku ${v.date}</span></span>
-                        <span className=${'tag' + (v.rev === doc.rev ? ' new' : '')}>${v.rev === doc.rev ? 'Terbaru' : 'Lama'}</span>
+                    <div className="rev-scroll">
+                    ${vers.map((v, i) => html`
+                      <button key=${i} className=${'rev-opt' + (i === s.verIdx ? ' on' : '')} onClick=${() => { set({ verIdx: i, verOpen: false, active: 's0' }); window.scrollTo({ top: 0 }); }}>
+                        <span className="t"><b>Rev ${v.rev}</b><span>Berlaku ${fmtDate(v.effectiveDate)}${v.note ? ' · ' + v.note : ''}</span></span>
+                        <span className=${'tag' + (i === 0 ? ' new' : '')}>${i === 0 ? 'Terbaru' : 'Lama'}</span>
                       </button>`)}
+                    </div>
                   </div>`}
-              </span>
-              ${doc.pages && html`<span className="dotsep">·</span><span>${doc.pages} halaman</span>`}
-              <span className="dotsep">·</span><span>Berlaku untuk ${doc.applies}</span>
+              </span>`}
+              ${doc.pages && isCurrent && html`<span className="dotsep">·</span><span>${doc.pages} halaman</span>`}
+              <span className="dotsep">·</span><span>Berlaku untuk ${applies(doc)}</span>
             </div>
             <div className="r-actions">
               <button className="btn" onClick=${() => copyText(deepLink).then(() => flash('Link disalin'))}>${I('link', 18)}<span>Salin link</span></button>
-              <button className="btn primary" onClick=${() => window.print()}>${I('download', 18)}<span>Unduh PDF</span></button>
+              ${vers.length > 0 && html`<button className="btn primary" onClick=${() => window.print()}>${I('download', 18)}<span>Unduh PDF</span></button>`}
             </div>
             ${!isCurrent && html`
               <div className="old-banner"><span className="ic">${I('alert')}</span>
-                <span>Anda sedang melihat Rev ${s.rev} yang sudah tidak berlaku. Gunakan Rev ${doc.rev} untuk operasional harian.</span>
-                <button onClick=${() => set({ rev: doc.rev })}>Lihat versi terbaru</button>
+                <span>Anda sedang melihat Rev ${viewV.rev} yang sudah tidak berlaku. Gunakan Rev ${vers[0].rev} untuk operasional harian.</span>
+                <button onClick=${() => { set({ verIdx: 0, active: 's0' }); window.scrollTo({ top: 0 }); }}>Lihat versi terbaru</button>
               </div>`}
             ${showToc && !wide && html`
               <div className="chip-toc">${toc.map(t => html`<button key=${t.id} className=${'chip' + (t.on ? ' on' : '')} onClick=${() => scrollToSec(t.id)}>${t.label}</button>`)}</div>`}
-            ${doc.full ? html`
-              ${SECS.map(sec => html`
-                <section key=${sec.id} id=${'sec-' + sec.id} className="sec">
-                  <h2>${sec.title}</h2>
+            ${secs.length ? html`
+              ${secs.map(sec => html`
+                <section key=${s.verIdx + sec.id} id=${'sec-' + sec.id} className="sec">
+                  ${sec.title !== doc.title && html`<h2>${sec.title}</h2>`}
                   ${sec.blocks.map(b => html`<div key=${b.aid} id=${b.aid} className="blk">${block(b)}</div>`)}
                 </section>`)}
-              <section className="signoff">
-                <span className="eyebrow lg">Persetujuan dokumen</span>
-                <div className="signoff-grid">
-                  ${SIGNOFF.map(g => html`
-                    <div key=${g.label} className="signoff-col"><b>${g.label}</b>
-                      ${g.people.map(p => html`<span key=${p.name} className="person"><${Avatar} name=${p.name} size=${32} /><span className="user-t"><b>${p.name}</b><span>${p.role}</span></span></span>`)}
-                    </div>`)}
-                </div>
-              </section>` : doc.user ? html`
-              <section className="sec">${bodyBlocks(doc.body).map((b, i) => html`<div key=${i} className="blk">${block(b)}</div>`)}
-                ${!doc.body.trim() && html`<p className="prose muted">–</p>`}
-              </section>` : html`
+              ${isCurrent && signoff.length > 0 && html`
+                <section className="signoff">
+                  <span className="eyebrow lg">Persetujuan dokumen</span>
+                  <div className="signoff-grid">
+                    ${signoff.map(g => html`
+                      <div key=${g.label} className="signoff-col"><b>${g.label}</b>
+                        ${g.people.map(p => html`<span key=${p.name} className="person"><${Avatar} name=${p.name} size=${32} /><span className="user-t"><b>${p.name}</b><span>${p.role}</span></span></span>`)}
+                      </div>`)}
+                  </div>
+                </section>`}` : html`
               <div className="notfull">
                 <b>Belum didigitalkan</b>
-                <p className="prose">File sumber dokumen ini belum dikonversi ke tampilan baca. Unduh PDF-nya, atau tanya Mancu. Mancu sudah terindeks ke dokumen aslinya.</p>
-                <button className="btn accent" onClick=${() => set({ chatOpen: true })}>${I('sparkles', 18)}<span>Tanya Mancu tentang dokumen ini</span></button>
+                <p className="prose">Isi dokumen ini belum dimasukkan ke Knowledge Base. Tambahkan revisinya di sheet Versi, atau tulis lewat Mode penulis.</p>
               </div>`}
           </div>
         </article>
@@ -532,8 +559,10 @@ function App() {
     run('saveArticle', payload(), status).then(res => {
       const rev = w.versions[w.versions.length - 1].rev;
       if (status === 'published') {
-        const a = res || { ...payload(), id: 'lokal-' + Date.now(), status: 'published' };
-        setArticles(list => [a, ...list.filter(x => x.id !== a.id)]);
+        const p = payload();
+        const d = prepDoc(res || { ...p, id: 'lokal-' + Date.now(), code: TYPE_SHORT[p.type], short: p.title, pages: '', signoff: '',
+          versions: p.versions.slice().reverse().map(v => ({ ...v, body: p.body })) });
+        setDocs(list => [...(list || []).filter(x => x.id !== d.id), d]);
         set({ saving: false, w: NEW_WRITER() });
         flash('Diterbitkan · Rev ' + rev);
         goHome();
@@ -569,9 +598,9 @@ function App() {
         <div className="w-head"><span className="n">2</span><b>Versi</b>
           <button className="text-btn" onClick=${() => setW(x => ({ versions: [...x.versions, { rev: Math.max(...x.versions.map(v => v.rev)) + 1, date: todayIso(), note: '' }] }))}>${I('plus', 16)}<span>Tambah versi</span></button>
         </div>
-        ${w.versions.map((v, i) => { const latest = i === w.versions.length - 1; return html`
+        ${w.versions.map((v, i) => { const isLast = i === w.versions.length - 1; return html`
           <div key=${v.rev} className="ver-row">
-            <span className="ver-rev"><b>Rev ${v.rev}</b><span className=${latest ? 'new' : ''}>${latest ? 'Terbaru' : 'Lama'}</span></span>
+            <span className="ver-rev"><b>Rev ${v.rev}</b><span className=${isLast ? 'new' : ''}>${isLast ? 'Terbaru' : 'Lama'}</span></span>
             <input className="input sm" type="date" value=${v.date} title="Tanggal berlaku" aria-label="Tanggal berlaku" onChange=${e => setVer(i, { date: e.target.value })} />
             <input className="input sm note" value=${v.note} placeholder="Catatan perubahan" aria-label="Catatan perubahan" onChange=${e => setVer(i, { note: e.target.value })} />
             <button className="ver-rm" title="Hapus versi" aria-label="Hapus versi" hidden=${w.versions.length < 2}
@@ -584,7 +613,7 @@ function App() {
         <div className=${'tagbox' + (s.focus === 'kw' ? ' focus' : '')} onClick=${e => { const inp = e.currentTarget.querySelector('input'); if (e.target === e.currentTarget && inp) inp.focus(); }}>
           ${w.kw.map(k => html`<span key=${k} className="chip-kw">${k}<button aria-label=${'Hapus ' + k} onClick=${() => setW(x => ({ kw: x.kw.filter(y => y !== k) }))}>${I('x', 12)}</button></span>`)}
           <input value=${w.kwDraft} placeholder="mis. karantina, PO hilang" aria-label="Kata kunci"
-            onChange=${e => { const v = e.target.value; if (v.includes(',')) v.split(',').slice(0, -1).forEach(addKw), setW({ kwDraft: v.split(',').pop() }); else setW({ kwDraft: v }); }}
+            onChange=${e => { const v = e.target.value; if (v.includes(',')) { v.split(',').slice(0, -1).forEach(addKw); setW({ kwDraft: v.split(',').pop() }); } else setW({ kwDraft: v }); }}
             onFocus=${() => set({ focus: 'kw' })} onBlur=${() => set(p => p.focus === 'kw' ? { focus: null } : {})}
             onKeyDown=${e => { if (e.key === 'Enter') { e.preventDefault(); addKw(w.kwDraft); } else if (e.key === 'Backspace' && !w.kwDraft && w.kw.length) setW(x => ({ kw: x.kw.slice(0, -1) })); }} />
         </div>
@@ -608,10 +637,10 @@ function App() {
           <span>Mancu<span className="badge-ai">AI</span></span>
           <span className="d-status"><span className="dot ring"></span>Online & terindeks ke SOP gudang</span>
         </div>
-        <button className="d-btn" title="Chat baru" aria-label="Chat baru" onClick=${() => { clearTimeout(timers.current.ask); set({ msgs: [], typing: false }); }}>${I('rotate', 18)}</button>
+        <button className="d-btn" title="Chat baru" aria-label="Chat baru" onClick=${() => { askSeq.current++; set({ msgs: [], typing: false }); }}>${I('rotate', 18)}</button>
         <button className="d-btn" title="Tutup" aria-label="Tutup" onClick=${() => set({ chatOpen: false })}>${I('x', 22)}</button>
       </div>
-      <div className="d-sub"><span className="ic">${I('file', 16)}</span><span>${docs.length} dokumen terindeks · terbaru SOP-DC-INV-007 Rev 11</span></div>
+      <div className="d-sub"><span className="ic">${I('file', 16)}</span><span>${loading ? '–' : lib.filter(d => d.versions.length).length + ' dokumen terindeks' + (latest ? ' · terbaru ' + latest.code + ' Rev ' + latest.versions[0].rev : '')}</span></div>
       <div className="d-body" ref=${bodyRef}>
         ${!s.msgs.length && !s.typing && html`
           <div className="hello"><b>Halo, ${USER.first}.</b><span>Tanya apa saja tentang SOP, IK, atau Specbook gudang. Setiap jawaban menyebut bagian dokumen sumbernya.</span></div>`}
@@ -619,7 +648,7 @@ function App() {
           <div key=${i} className="msg-ai">
             <span className="who"><span className="spark-tile" style=${{ width: 26, height: 26 }}>${I('sparkles', 14)}</span>Mancu</span>
             <span className="intro">${m.intro}</span>
-            <ol className="numlist">${m.items.map((t, j) => html`<li key=${j}><span>${j + 1}.</span><span>${t}</span></li>`)}</ol>
+            ${m.items.length > 0 && html`<ol className="numlist">${m.items.map((t, j) => html`<li key=${j}><span>${j + 1}.</span><span>${rich(t)}</span></li>`)}</ol>`}
             ${m.note && html`<span className="msg-note">${m.note}</span>`}
             ${m.sources.length > 0 && html`
               <div className="src-cards">
@@ -627,7 +656,7 @@ function App() {
                 ${m.sources.map(src => html`<button key=${src.label} className="src-card" onClick=${() => openSource(src)}><span className="tile">${I('file', 16)}</span><b>${src.label}</b><span className="ic">${I('arrowR', 16)}</span></button>`)}
               </div>`}
           </div>`)}
-        ${s.typing && html`<div className="typing"><span className="dot"></span>Mancu sedang membaca SOP…</div>`}
+        ${s.typing && typingEl}
         ${prompts.length > 0 && html`
           <div style=${{ display: 'flex', flexDirection: 'column' }}>
             <span className="eyebrow" style=${{ color: 'var(--sec2)', paddingBottom: 6 }}>${s.msgs.length ? 'Pertanyaan lain' : 'Coba tanyakan'}</span>
