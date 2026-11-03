@@ -201,8 +201,8 @@ function App() {
     requestAnimationFrame(() => requestAnimationFrame(() => { set({ anim: true }); if (after) after(); }));
   };
   const hdrH = () => (hdrRef.current ? hdrRef.current.offsetHeight : 65);
-  const scrollToSec = id => { const el = document.getElementById('sec-' + id); if (el) window.scrollTo({ top: el.getBoundingClientRect().top + window.scrollY - hdrH() - 75, behavior: 'smooth' }); set({ active: id }); };
-  const scrollToEl = id => { const el = document.getElementById(id); if (el) window.scrollTo({ top: el.getBoundingClientRect().top + window.scrollY - hdrH() - 45, behavior: 'smooth' }); set({ activeSub: id }); };
+  const scrollToSec = id => { const el = document.getElementById('sec-' + id); if (el) window.scrollTo({ top: el.getBoundingClientRect().top + window.scrollY - hdrH() - 75 }); set({ active: id }); };
+  const scrollToEl = id => { const el = document.getElementById(id); if (el) window.scrollTo({ top: el.getBoundingClientRect().top + window.scrollY - hdrH() - 45 }); set({ activeSub: id }); };
   const openDoc = (d, sec) => {
     if (!d) return;
     const cur = sRef.current;
