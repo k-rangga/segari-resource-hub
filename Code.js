@@ -54,7 +54,7 @@ function saveArticle(a, status) {
     const latest = a.versions[a.versions.length - 1];
     const row = [id, status === 'published' ? 'published' : 'draft', a.title, a.type, a.areas.join(', '), a.body,
       JSON.stringify(a.versions), a.keywords.join(', '), latest.rev, latest.effectiveDate,
-      Utilities.formatDate(new Date(), TZ, 'yyyy-MM-dd HH:mm'), Session.getActiveUser().getEmail() || '–'];
+      Utilities.formatDate(new Date(), TZ, 'yyyy-MM-dd HH:mm'), '–'];
     const n = sh.getLastRow();
     const ids = n > 1 ? sh.getRange(2, 1, n - 1, 1).getValues().map(r => String(r[0])) : [];
     const i = ids.indexOf(id);
