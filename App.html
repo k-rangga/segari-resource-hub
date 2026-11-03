@@ -99,7 +99,7 @@ const parseSignoff = text => String(text || '').split('\n').map(l => l.trim()).f
 });
 
 // ------------------------------------------------------------ keyword search
-const STOP = new Set('apa yang harus jika dan untuk bagaimana berapa dari ada atau dengan saat tidak sudah pada ini itu bisa kalau mana kapan siapa'.split(' '));
+const STOP = new Set('apa yang harus jika dan untuk bagaimana berapa dari ada atau dengan saat tidak sudah pada ini itu bisa kalau mana kapan siapa dilakukan melakukan staf staff cara'.split(' '));
 const words = q => q.toLowerCase().split(/[^a-z0-9]+/).filter(w => w.length >= 3 && !STOP.has(w));
 const docHay = d => (d.code + ' ' + d.title + ' ' + d.short + ' ' + d.keywords.join(' ')).toLowerCase();
 
@@ -178,7 +178,7 @@ const saveW = w => { try { localStorage.setItem('kb-drawer-w', String(w)); } cat
 function App() {
   const [s, setS] = useState({
     step: 'home', homeView: 'search', type: 'sop', dept: null, docId: null, active: 's0', activeSub: null, tocOpen: {}, anim: true,
-    q: '', focus: null, homeQ: null, homeAns: null, homeTyping: false, homeTab: 'mancu', browseQ: '',
+    q: '', sq: '', focus: null, homeQ: null, homeAns: null, homeTyping: false, homeTab: 'mancu', browseQ: '',
     chatOpen: false, msgs: [], typing: false, think: null, draft: '', toast: null, w: NEW_WRITER(), saving: false
   });
   const set = patch => setS(p => ({ ...p, ...(typeof patch === 'function' ? patch(p) : patch) }));
@@ -230,9 +230,25 @@ function App() {
     timers.current.think = [700, 1700].map((ms, i) => setTimeout(() => set(p => p.think ? { think: { ...p.think, phase: i + 1 } } : {}), ms));
   };
   const stopThink = () => (timers.current.think || []).forEach(clearTimeout);
-  const answer = (text, docId) => run('askMancu', text, docId || '')
-    .then(a => a || localAnswer(text, docsRef.current))
-    .catch(err => ({ error: true, intro: String((err && err.message) || 'Mancu sedang tidak tersedia. Coba lagi sebentar.').replace(/^(Error|Exception):\s*/, ''), items: [], note: '', sources: [] }));
+  // Answers are kept for the session per page and question, so a repeat (or a prefetched example) shows at once.
+  const answer = (text, docId) => {
+    const key = (docId || '') + '|' + text.trim().toLowerCase();
+    const memo = timers.current.memo || (timers.current.memo = {});
+    if (memo[key]) return memo[key];
+    // Gemini's speed varies a lot: if no answer within 8 s, a backup request starts on another model and the first answer wins.
+    const call = lane => run('askMancu', text, docId || '', lane).then(a => a || localAnswer(text, docsRef.current));
+    const p = new Promise((ok, fail) => {
+      let running = 0, started = false, done = false, timer = null;
+      const settle = a => { if (!done) { done = true; clearTimeout(timer); ok(a); } };
+      const start = lane => { running++; call(lane).then(settle, err => { running--; if (done) return; if (!started && hasServer) startBackup(); else if (!running) fail(err); }); };
+      const startBackup = () => { if (started) return; started = true; clearTimeout(timer); start(1); };
+      start(0);
+      if (hasServer) timer = setTimeout(startBackup, 8000);
+    }).catch(err => ({ error: true, intro: String((err && err.message) || 'Mancu sedang tidak tersedia. Coba lagi sebentar.').replace(/^(Error|Exception):\s*/, ''), items: [], note: '', sources: [] }));
+    memo[key] = p;
+    p.then(a => { if (a.error) delete memo[key]; });
+    return p;
+  };
   const ask = text => {
     text = (text || '').trim();
     if (!text) return;
@@ -319,12 +335,14 @@ function App() {
     set(p => ({ typing: false, think: null, msgs: [...p.msgs, { ai: true, error: true, intro: 'Halaman berubah, jadi jawaban dihentikan. Mancu hanya membaca dokumen yang sedang dibuka. Tanyakan lagi di halaman ini.', items: [], note: '', sources: [] }] }));
   }, [s.step, s.docId]);
 
-  // Warm the server cache the first time the chat opens, so the first answer starts sooner.
-  useEffect(() => { if (s.chatOpen && !timers.current.warm) { timers.current.warm = true; run('warmMancu').catch(() => {}); } }, [s.chatOpen]);
+  // Warm the server cache as soon as a document or the chat opens, so the first answer starts sooner.
+  useEffect(() => {
+    if ((s.chatOpen || s.step === 'reader') && !timers.current.warm) { timers.current.warm = true; run('warmMancu').catch(() => {}); }
+  }, [s.chatOpen, s.step]);
 
   // ---- layout flags
   const xwide = vw >= 1200, wide = vw >= 1024, mid = vw >= 640;
-  const showHeaderSearch = s.step === 'list' || s.step === 'reader';
+  const showHeaderSearch = s.step === 'list' || s.step === 'reader' || s.step === 'search';
   const isWriter = s.step === 'writer';
   const loading = docs === null;
   const typingEl = html`<div className="typing"><span className="dot"></span>Mancu sedang membaca SOP…</div>`;
@@ -339,24 +357,21 @@ function App() {
     </div>`;
 
   // ================================================================= header
-  const ql = s.q.trim().toLowerCase();
-  // Header search is keyword search over sections (then whole documents); Mancu is the last row.
-  const searchHits = ql ? (() => {
+  // Keyword search over sections (then whole documents) for the results page.
+  const keywordHits = q => {
     const seen = {}, out = [];
-    kwSearch(s.q, lib).forEach(h => {
+    kwSearch(q, lib).forEach(h => {
       const key = h.d.id + (h.s ? '#' + h.s.id : '');
       if (seen[key] || (!h.s && out.some(o => o.d.id === h.d.id))) return;
       seen[key] = true;
-      out.push({ d: h.d, sec: h.s ? h.s.id : null, title: h.s && h.s.title !== h.d.title ? h.s.title : h.d.title, sub: h.s ? h.d.code + ' · ' + h.d.title : h.d.code + ' · ' + applies(h.d), text: h.s ? excerpt(h.s, words(s.q)) : '' });
+      out.push({ key, d: h.d, sec: h.s ? h.s.id : null, title: h.s && h.s.title !== h.d.title ? h.s.title : h.d.title,
+        sub: h.d.code + ' · ' + h.d.title, text: h.s ? excerpt(h.s, words(q)) : applies(h.d) });
     });
-    return out.slice(0, 6);
-  })() : [];
-  const hIdx = Math.min(s.hIdx || 0, searchHits.length);
-  const pickHit = i => {
-    headRef.current.blur();
-    if (i < searchHits.length) { openDoc(searchHits[i].d, searchHits[i].sec); set({ q: '' }); }
-    else { ask(s.q); set({ q: '' }); }
+    return out;
   };
+  const goSearch = q => { q = (q || '').trim(); if (!q) return; if (headRef.current) headRef.current.blur(); go({ step: 'search', sq: q, q }); };
+  // From the results page Mancu answers on the home screen, across every document.
+  const askFromSearch = q => { go({ step: 'home', homeView: 'search', docId: null }); if (hasServer) google.script.history.replace(null, {}); askHome(q); };
   const header = html`
     <header className="hdr" ref=${hdrRef}>
       <div className="hdr-in">
@@ -368,32 +383,14 @@ function App() {
           <div className="hdr-mid">
             <div className=${'hsearch' + (s.focus === 'head' ? ' focus' : '')}>
               ${I('search')}
-              <input ref=${headRef} value=${s.q} placeholder="Cari dokumen atau tanya Mancu…" aria-label="Cari dokumen atau tanya Mancu"
-                onChange=${e => set({ q: e.target.value, hIdx: 0 })} onFocus=${() => set({ focus: 'head' })}
-                onBlur=${() => setTimeout(() => set(p => p.focus === 'head' ? { focus: null } : {}), 120)}
-                onKeyDown=${e => {
-                  if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); set({ hIdx: (hIdx + (e.key === 'ArrowDown' ? 1 : searchHits.length)) % (searchHits.length + 1) }); }
-                  else if (e.key === 'Enter' && s.q.trim()) { e.preventDefault(); pickHit(hIdx); }
-                }} />
-              <button className="btn-ask" onMouseDown=${e => { e.preventDefault(); if (s.q.trim()) { ask(s.q); set({ q: '' }); } else set({ chatOpen: true }); }}>
+              <input ref=${headRef} value=${s.q} placeholder="Cari kata kunci di semua SOP…" aria-label="Cari kata kunci di semua SOP"
+                onChange=${e => set({ q: e.target.value })} onFocus=${() => set({ focus: 'head' })}
+                onBlur=${() => set(p => p.focus === 'head' ? { focus: null } : {})}
+                onKeyDown=${e => { if (e.key === 'Enter' && s.q.trim()) { e.preventDefault(); goSearch(s.q); } }} />
+              <button className="btn-ask" onMouseDown=${e => { e.preventDefault(); if (s.q.trim()) goSearch(s.q); else set({ chatOpen: true }); }}>
                 <span className="orange">${I('sparkles', 18)}</span>${mid && html`<span>Tanya Mancu</span>`}
               </button>
             </div>
-            ${s.focus === 'head' && ql && html`
-              <div className="pop" role="listbox">
-                <div className="eyebrow">${searchHits.length ? 'Hasil kata kunci' : 'Kata kunci'}</div>
-                ${searchHits.map((h, i) => html`
-                  <button key=${h.d.id + (h.sec || '')} role="option" aria-selected=${i === hIdx} className=${'pop-row' + (i === hIdx ? ' on' : '')}
-                    onMouseEnter=${() => set({ hIdx: i })} onMouseDown=${e => { e.preventDefault(); pickHit(i); }}>
-                    <span className="ic muted">${I('file')}</span>
-                    <span className="t"><b>${h.title}</b><span>${h.sub}</span>${h.text && html`<i>${h.text}</i>`}</span>
-                  </button>`)}
-                ${!searchHits.length && html`<div className="pop-empty">Tidak ada bagian dokumen yang cocok. Coba tanya Mancu.</div>`}
-                <button role="option" aria-selected=${hIdx === searchHits.length} className=${'pop-ask' + (hIdx === searchHits.length ? ' on' : '')}
-                  onMouseEnter=${() => set({ hIdx: searchHits.length })} onMouseDown=${e => { e.preventDefault(); pickHit(searchHits.length); }}>
-                  ${I('sparkles', 18)}<span className="t"><b>Tanya Mancu: “${s.q.trim()}”</b><span>${ctxDoc ? 'Jawaban dari ' + ctxDoc.title : 'Jawaban dari semua SOP'}</span></span>
-                </button>
-              </div>`}
           </div>`}
         <div className="hdr-right">
           <button className=${'btn-writer' + (isWriter ? ' on' : '')} title=${isWriter ? 'Keluar mode penulis' : 'Mode penulis'}
@@ -527,6 +524,37 @@ function App() {
             <span className="t"><b>${docTitle(d)}</b><span className="meta"><span className="code">${d.code}</span><span>Rev ${revLabel(d)} · Berlaku ${v ? fmtDate(v.effectiveDate) : '–'}${d.pages ? ' · ' + d.pages + ' halaman' : ''}</span></span></span>
             <i>${I('chevR', 18)}</i>
           </button>`; })}
+      </div>
+    </div>`;
+
+  // ================================================================= search results
+  const sHits = s.step === 'search' ? keywordHits(s.sq) : [];
+  const searchPage = html`
+    <div className="results">
+      <nav className="crumbs" aria-label="Breadcrumb">
+        <button className="crumb" onClick=${goHome}>${I('home', 16)}<span>Beranda</span></button><span className="sep">›</span>
+        <span className="crumb-pill">Hasil pencarian</span>
+      </nav>
+      <div className="list-head">
+        <div style=${{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+          <span className="eyebrow lg">Hasil kata kunci</span>
+          <h1>“${s.sq}”</h1>
+        </div>
+        <span style=${{ fontSize: 14, color: 'var(--sec2)' }}>${loading ? 'Memuat…' : sHits.length + ' bagian'}</span>
+      </div>
+      <div className="res-list">
+        ${sHits.map(h => html`
+          <button key=${h.key} className="res-row" onClick=${() => openDoc(h.d, h.sec)}>
+            <span className="tile">${I('file', 18)}</span>
+            <span className="t"><b>${h.title}</b><span className="meta">${h.sub}</span>${h.text && html`<span className="ex">${h.text}</span>`}</span>
+            <i>${I('chevR', 18)}</i>
+          </button>`)}
+        ${!loading && !sHits.length && html`<p className="empty">Tidak ada bagian dokumen yang cocok dengan kata kunci ini.</p>`}
+      </div>
+      <div className="res-ask">
+        <span className="spark-tile" style=${{ width: 36, height: 36 }}>${I('sparkles', 18)}</span>
+        <span className="t"><b>${sHits.length ? 'Belum menemukan jawabannya?' : 'Coba tanya Mancu'}</b><span>Mancu membaca semua SOP dan menjawab dengan bagian sumbernya.</span></span>
+        <button className="btn primary" onClick=${() => askFromSearch(s.sq)}>${I('sparkles', 16)}<span>Tanya Mancu</span></button>
       </div>
     </div>`;
 
@@ -762,10 +790,19 @@ function App() {
       </div>
     </div>`;
 
+  // Answer the page's example questions in the background while the chat sits open, so a click answers at once.
+  useEffect(() => {
+    if (!s.chatOpen || s.msgs.length || s.typing || !hasServer) return;
+    const ctx = ctxDocId();
+    const t = setTimeout(() => pagePrompts.slice(0, 3).forEach(q => answer(q, ctx)), 800);
+    return () => clearTimeout(t);
+  }, [s.chatOpen, s.docId, s.step, prompts.length]);
+
   // ================================================================= drawer
   // Example questions only on an empty chat, and on a document page only those it can answer.
   const ctxDocNow = s.step === 'reader' ? lib.find(d => d.id === s.docId) : null;
-  const nextPrompts = s.typing || s.msgs.length ? [] : prompts.filter(p => !ctxDocNow || kwSearch(p, [ctxDocNow]).some(h => h.s && h.n >= 2));
+  const pagePrompts = prompts.filter(p => !ctxDocNow || kwSearch(p, [ctxDocNow]).some(h => h.s && h.n >= Math.max(2, Math.ceil(words(p).length * 0.6))));
+  const nextPrompts = s.typing || s.msgs.length ? [] : pagePrompts;
   const width = clampW(drawerW);
   const startResize = e => {
     e.preventDefault();
@@ -836,7 +873,7 @@ function App() {
     </aside>`;
 
   // ================================================================= page
-  const page = s.step === 'home' ? home : s.step === 'list' ? list : s.step === 'reader' ? reader() : writer;
+  const page = s.step === 'home' ? home : s.step === 'list' ? list : s.step === 'search' ? searchPage : s.step === 'reader' ? reader() : writer;
   return html`
     <div style=${{ minHeight: '100vh' }}>
       ${header}

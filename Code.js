@@ -24,6 +24,7 @@ const TYPE_CODE = { sop: 'SOP', ik: 'IK', spec: 'Specbook', safety: 'SOP' };
 const MODELS = ['gemini-3.1-flash-lite', 'gemini-3.5-flash', 'gemini-flash-lite-latest'];
 const DEFAULT_DAILY_LIMIT = 300;
 const CONTEXT_CHARS = 60000;
+const DOC_CONTEXT_CHARS = 16000; // on a document page: its most relevant sections, enough for a 27-page SOP's key parts
 const CHUNK_TTL = 600;      // seconds the parsed library stays cached
 const ANSWER_TTL = 3600;    // seconds an identical question reuses its answer
 
@@ -179,9 +180,11 @@ function sectionDiff_(prevBody, body) {
 const THINKING = [{ thinkingLevel: 'minimal' }, { thinkingBudget: 0 }, { thinkingLevel: 'low' }, null];
 
 /** One generateContent call with a JSON response schema; returns the parsed JSON. Moves to the next model when one is busy. */
-function gemini_(key, system, text, schema, temperature) {
+function gemini_(key, system, text, schema, temperature, lane) {
   const own = PropertiesService.getScriptProperties().getProperty('GEMINI_MODEL');
-  const models = (own ? [own] : []).concat(MODELS.filter(m => m !== own));
+  const all = (own ? [own] : []).concat(MODELS.filter(m => m !== own));
+  const start = (lane || 0) % all.length;
+  const models = all.slice(start).concat(all.slice(0, start));
   let res;
   for (let m = 0; m < models.length; m++) {
     res = callModel_(key, models[m], system, text, schema, temperature);
@@ -203,7 +206,7 @@ function callModel_(key, model, system, text, schema, temperature) {
   const known = cache.get(memo);
   let i = known === null ? 0 : Number(known), res;
   for (; i < THINKING.length; i++) {
-    const generation = { temperature: temperature, maxOutputTokens: 2048, responseMimeType: 'application/json', responseSchema: schema };
+    const generation = { temperature: temperature, maxOutputTokens: 1024, responseMimeType: 'application/json', responseSchema: schema };
     if (THINKING[i]) generation.thinkingConfig = THINKING[i];
     res = UrlFetchApp.fetch(url, {
       method: 'post',
@@ -222,7 +225,12 @@ function callModel_(key, model, system, text, schema, temperature) {
   return res;
 }
 
-function askMancu(question, docId) {
+/**
+ * @param {string} question
+ * @param {string=} docId  the open document, or empty for every document
+ * @param {number=} lane   0 normally; 1 for the backup request the page sends when the first is slow (starts at the next model)
+ */
+function askMancu(question, docId, lane) {
   question = String(question || '').trim().slice(0, 500);
   docId = String(docId || '');
   if (!question) throw new Error('Pertanyaan kosong');
@@ -242,12 +250,12 @@ function askMancu(question, docId) {
   const all = cachedChunks_(cache, gen);
   const scope = docId ? all.filter(c => c.docId === docId) : all;
   if (!scope.length) throw new Error('Dokumen ini belum bisa dibaca Mancu.');
-  const chunks = pickChunks_(question, scope);
+  const chunks = pickChunks_(question, scope, docId ? DOC_CONTEXT_CHARS : CONTEXT_CHARS);
   const context = chunks.map(c => '[' + c.id + '] ' + c.label + '\n' + c.text).join('\n\n---\n\n');
   const focus = docId ? 'Staf sedang membuka ' + scope[0].head + '. Jawab hanya dari dokumen ini; jika tidak ada, katakan jawabannya tidak ada di dokumen ini.\n\n' : '';
   let out;
   try {
-    out = gemini_(key, SYSTEM_PROMPT, focus + 'DOKUMEN:\n\n' + context + '\n\nPERTANYAAN STAF:\n' + question, ANSWER_SCHEMA, 0.2);
+    out = gemini_(key, SYSTEM_PROMPT, focus + 'DOKUMEN:\n\n' + context + '\n\nPERTANYAAN STAF:\n' + question, ANSWER_SCHEMA, 0.2, Number(lane) || 0);
   } catch (e) {
     // A missing "connect to an external service" authorization lands here too: run authorizeMancu() once in the editor.
     console.error('Gemini: ' + e.message);
@@ -355,8 +363,8 @@ function chunks_(docs) {
 
 const STOP = 'apa yang harus jika dan untuk bagaimana berapa dari ada atau dengan saat tidak sudah pada ini itu bisa kalau mana kapan siapa'.split(' ');
 
-/** Most relevant chunks first, within the context budget. */
-function pickChunks_(question, chunks) {
+/** Most relevant chunks first, within the context budget (smaller input, faster answer). */
+function pickChunks_(question, chunks, budget) {
   const words = question.toLowerCase().split(/[^a-z0-9]+/).filter(w => w.length >= 2 && STOP.indexOf(w) < 0);
   const scored = chunks.map(c => {
     const hay = (c.label + ' ' + c.keywords + ' ' + c.text).toLowerCase();
@@ -366,7 +374,7 @@ function pickChunks_(question, chunks) {
   let size = 0;
   scored.forEach(o => {
     const len = o.c.text.length;
-    if (size + len <= CONTEXT_CHARS) { picked.push(o.c); size += len; }
+    if (size + len <= budget) { picked.push(o.c); size += len; }
   });
   return picked;
 }
