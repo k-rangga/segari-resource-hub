@@ -5,7 +5,7 @@
  *
  * Script Properties:
  *   GEMINI_API_KEY      required for Mancu (set it yourself; never commit it)
- *   GEMINI_MODEL        optional, default gemini-flash-latest
+ *   GEMINI_MODEL        optional, default gemini-flash-lite-latest (fastest)
  *   MANCU_DAILY_LIMIT   optional, default 300 questions per day for the whole app
  */
 
@@ -18,9 +18,9 @@ const VER_COLS = ['ID dokumen', 'Rev', 'Berlaku', 'Catatan', 'Isi'];
 const TYPES = ['sop', 'ik', 'spec', 'safety'];
 const AREAS = ['pc', 'dmg', 'fc', 'storage', 'outbound'];
 const TYPE_CODE = { sop: 'SOP', ik: 'IK', spec: 'Specbook', safety: 'SOP' };
-const DEFAULT_MODEL = 'gemini-flash-latest';
+const DEFAULT_MODEL = 'gemini-flash-lite-latest';
 const DEFAULT_DAILY_LIMIT = 300;
-const CONTEXT_CHARS = 60000;
+const CONTEXT_CHARS = 24000;
 
 // ---------------------------------------------------------------- web app
 
@@ -85,17 +85,24 @@ function askMancu(question) {
   const chunks = pickChunks_(question, chunks_(getLibrary()));
   const context = chunks.map(c => '[' + c.id + '] ' + c.label + '\n' + c.text).join('\n\n---\n\n');
   const model = props.getProperty('GEMINI_MODEL') || DEFAULT_MODEL;
-  const res = UrlFetchApp.fetch('https://generativelanguage.googleapis.com/v1beta/models/' + encodeURIComponent(model) + ':generateContent', {
-    method: 'post',
-    contentType: 'application/json',
-    headers: { 'x-goog-api-key': key },
-    muteHttpExceptions: true,
-    payload: JSON.stringify({
-      systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
-      contents: [{ role: 'user', parts: [{ text: 'DOKUMEN:\n\n' + context + '\n\nPERTANYAAN STAF:\n' + question }] }],
-      generationConfig: { temperature: 0.2, responseMimeType: 'application/json', responseSchema: ANSWER_SCHEMA }
-    })
-  });
+  let res;
+  try {
+    res = UrlFetchApp.fetch('https://generativelanguage.googleapis.com/v1beta/models/' + encodeURIComponent(model) + ':generateContent', {
+      method: 'post',
+      contentType: 'application/json',
+      headers: { 'x-goog-api-key': key },
+      muteHttpExceptions: true,
+      payload: JSON.stringify({
+        systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
+        contents: [{ role: 'user', parts: [{ text: 'DOKUMEN:\n\n' + context + '\n\nPERTANYAAN STAF:\n' + question }] }],
+        generationConfig: { temperature: 0.2, responseMimeType: 'application/json', responseSchema: ANSWER_SCHEMA }
+      })
+    });
+  } catch (e) {
+    // Usually a missing "connect to an external service" authorization: run authorizeMancu() once in the editor.
+    console.error('Gemini fetch: ' + e.message);
+    throw new Error('Mancu belum bisa terhubung ke Gemini. Hubungi admin Knowledge Base.');
+  }
   if (res.getResponseCode() !== 200) {
     console.error('Gemini ' + res.getResponseCode() + ': ' + res.getContentText().slice(0, 500));
     throw new Error('Mancu sedang tidak tersedia. Coba lagi sebentar.');
@@ -118,6 +125,13 @@ function askMancu(question) {
     sources: (out.sourceIds || []).map(id => byId[id]).filter(c => c && !seen[c.id] && (seen[c.id] = true))
       .map(c => ({ docId: c.docId, sec: c.sec, label: c.label }))
   };
+}
+
+/** Run once from the Apps Script editor to grant the "connect to an external service" permission Mancu needs. */
+function authorizeMancu() {
+  const key = PropertiesService.getScriptProperties().getProperty('GEMINI_API_KEY');
+  const res = UrlFetchApp.fetch('https://generativelanguage.googleapis.com/v1beta/models', { headers: { 'x-goog-api-key': key || '' }, muteHttpExceptions: true });
+  console.log(key ? 'Gemini terhubung (HTTP ' + res.getResponseCode() + ')' : 'Izin diberikan. Tambahkan GEMINI_API_KEY di Script Properties.');
 }
 
 const SYSTEM_PROMPT = [

@@ -140,6 +140,10 @@ function copyText(text) {
 // ------------------------------------------------------------ app
 const NEW_WRITER = () => ({ id: '', title: '', type: 'sop', areas: [], body: '', versions: [{ rev: 1, date: todayIso(), note: 'Rilis pertama' }], kw: [], kwDraft: '' });
 const KW_SUGGEST = ['inbound', 'supplier', 'PO', 'karantina', 'defect', 'expired date', 'FEFO', 'putaway'];
+const DRAWER_W = 480, DRAWER_MIN = 380;
+const drawerMax = () => Math.min(960, window.innerWidth - 80);
+const clampW = w => Math.round(Math.max(DRAWER_MIN, Math.min(drawerMax(), w)));
+const saveW = w => { try { localStorage.setItem('kb-drawer-w', String(w)); } catch (e) {} };
 
 function App() {
   const [s, setS] = useState({
@@ -150,6 +154,8 @@ function App() {
   const set = patch => setS(p => ({ ...p, ...(typeof patch === 'function' ? patch(p) : patch) }));
   const [docs, setDocs] = useState(null);
   const [vw, setVw] = useState(window.innerWidth);
+  const [drawerW, setDrawerW] = useState(() => { try { return Number(localStorage.getItem('kb-drawer-w')) || DRAWER_W; } catch (e) { return DRAWER_W; } });
+  const [dragging, setDragging] = useState(false);
   const hdrRef = useRef(), heroRef = useRef(), browseRef = useRef(), headRef = useRef(), bodyRef = useRef();
   const timers = useRef({}), askSeq = useRef(0);
   const sRef = useRef(s); sRef.current = s;
@@ -179,10 +185,10 @@ function App() {
   const flash = t => { clearTimeout(timers.current.toast); set({ toast: t }); timers.current.toast = setTimeout(() => set({ toast: null }), 2200); };
 
   // ---- Mancu: Gemini on the server, local document search when no key is set
-  const aiMsg = a => ({ ai: true, intro: a.intro, items: a.items || [], note: a.note || '', sources: a.sources || [] });
+  const aiMsg = a => ({ ai: true, intro: a.intro, items: a.items || [], note: a.note || '', sources: a.sources || [], error: !!a.error });
   const answer = text => run('askMancu', text)
     .then(a => a || localAnswer(text, docsRef.current))
-    .catch(err => ({ intro: (err && err.message) || 'Mancu sedang tidak tersedia. Coba lagi sebentar.', items: [], note: '', sources: [] }));
+    .catch(err => ({ error: true, intro: String((err && err.message) || 'Mancu sedang tidak tersedia. Coba lagi sebentar.').replace(/^(Error|Exception):\s*/, ''), items: [], note: '', sources: [] }));
   const ask = text => {
     text = (text || '').trim();
     if (!text) return;
@@ -333,7 +339,8 @@ function App() {
             <div className="ans">
               <span className="ans-label"><span className="ic orange">${I('sparkles', 14)}</span>Mancu<span className="q">· “${s.homeQ}”</span></span>
               ${s.homeTyping && typingEl}
-              ${ans && html`
+              ${ans && ans.error && html`<span className="ans-note">${ans.intro}</span>`}
+              ${ans && !ans.error && html`
                 <span className="ans-intro">${ans.intro}</span>
                 ${ans.items.length > 0 && html`<ol className="numlist">${ans.items.map((t, i) => html`<li key=${i}><span>${i + 1}.</span><span>${rich(t)}</span></li>`)}</ol>`}
                 ${ans.note && html`<span className="ans-note">${ans.note}</span>`}
@@ -628,9 +635,34 @@ function App() {
 
   // ================================================================= drawer
   const prompts = s.typing ? [] : PROMPTS.filter(p => !s.msgs.some(m => m.text === p));
+  const width = clampW(drawerW);
+  const startResize = e => {
+    e.preventDefault();
+    setDragging(true);
+    const move = ev => setDrawerW(clampW(window.innerWidth - ev.clientX));
+    const up = ev => {
+      setDragging(false);
+      saveW(clampW(window.innerWidth - ev.clientX));
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+  };
+  const keyResize = e => {
+    const step = e.shiftKey ? 80 : 20;
+    const next = e.key === 'ArrowLeft' ? width + step : e.key === 'ArrowRight' ? width - step : e.key === 'Home' ? drawerMax() : e.key === 'End' ? DRAWER_MIN : null;
+    if (next == null) return;
+    e.preventDefault();
+    const w = clampW(next);
+    setDrawerW(w); saveW(w);
+  };
   const drawer = html`
     ${s.chatOpen && html`<div className="scrim" onClick=${() => set({ chatOpen: false })}></div>`}
-    <aside className=${'drawer' + (s.chatOpen ? ' open' : '')} style=${{ width: mid ? 480 : '100vw' }} aria-label="Mancu" aria-hidden=${!s.chatOpen}>
+    <aside className=${'drawer' + (s.chatOpen ? ' open' : '') + (dragging ? ' dragging' : '')} style=${{ width: mid ? width : '100vw' }} aria-label="Mancu" aria-hidden=${!s.chatOpen}>
+      ${mid && html`<div className="d-resize" role="separator" aria-orientation="vertical" aria-label="Ubah lebar panel" title="Seret untuk mengubah lebar"
+        tabIndex="0" aria-valuemin=${DRAWER_MIN} aria-valuemax=${drawerMax()} aria-valuenow=${width}
+        onPointerDown=${startResize} onKeyDown=${keyResize} onDoubleClick=${() => { setDrawerW(DRAWER_W); saveW(DRAWER_W); }}><span></span></div>`}
       <div className="d-head">
         <span className="d-tile">${I('sparkles', 22)}</span>
         <div className="d-name">
@@ -647,7 +679,7 @@ function App() {
         ${s.msgs.map((m, i) => m.user ? html`<div key=${i} className="msg-user">${m.text}</div>` : html`
           <div key=${i} className="msg-ai">
             <span className="who"><span className="spark-tile" style=${{ width: 26, height: 26 }}>${I('sparkles', 14)}</span>Mancu</span>
-            <span className="intro">${m.intro}</span>
+            ${m.error ? html`<span className="msg-note">${m.intro}</span>` : html`<span className="intro">${m.intro}</span>`}
             ${m.items.length > 0 && html`<ol className="numlist">${m.items.map((t, j) => html`<li key=${j}><span>${j + 1}.</span><span>${rich(t)}</span></li>`)}</ol>`}
             ${m.note && html`<span className="msg-note">${m.note}</span>`}
             ${m.sources.length > 0 && html`
