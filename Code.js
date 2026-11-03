@@ -23,6 +23,8 @@ const TYPE_CODE = { sop: 'SOP', ik: 'IK', spec: 'Specbook', safety: 'SOP' };
 // Fastest first. 3.1 Flash-Lite answered in ~1 s where the -latest aliases took 17-50 s; the others step in when it is busy (503).
 const MODELS = ['gemini-3.1-flash-lite', 'gemini-3.5-flash', 'gemini-flash-lite-latest'];
 const DEFAULT_DAILY_LIMIT = 300;
+// Browser tab icon: segari.id's own icon, served by Google's favicon service (Apps Script needs an https image URL).
+const FAVICON_URL = 'https://www.google.com/s2/favicons?domain=segari.id&sz=64&f=icon.png'; // must end in an image extension
 const CONTEXT_CHARS = 60000;
 const DOC_CONTEXT_CHARS = 16000; // on a document page: its most relevant sections, enough for a 27-page SOP's key parts
 const CHUNK_TTL = 600;      // seconds the parsed library stays cached
@@ -33,10 +35,13 @@ const ANSWER_TTL = 3600;    // seconds an identical question reuses its answer
 function doGet() {
   const t = HtmlService.createTemplateFromFile('Index');
   t.appUrl = ScriptApp.getService().getUrl() || '';
-  return t.evaluate()
+  const page = t.evaluate()
     .setTitle('Segari Knowledge Base')
     .addMetaTag('viewport', 'width=device-width, initial-scale=1')
     .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.DEFAULT);
+  // The Segari mark in the browser tab; a rejected icon must never stop the page from loading.
+  try { page.setFaviconUrl(FAVICON_URL); } catch (e) { console.warn('Favicon: ' + e.message); }
+  return page;
 }
 
 function include(name) {
