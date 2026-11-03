@@ -422,8 +422,11 @@ function syncSeed_(docs, vers, prompts) {
     docs.getRange(docs.getLastRow() + 1, 1, add.length, DOC_COLS.length).setValues(add.map(d =>
       [d.id, d.code, d.title, d.short, d.type, d.areas.join(', '), String(d.pages || ''), d.keywords.join(', '), d.signoff, 'terbit', stamp]));
     const rows = [];
-    add.forEach(d => d.versions.forEach(v => rows.push([d.id, String(v.rev), v.effectiveDate, v.note, v.body])));
+    // Gemini writes the changelog of a seeded revision that came without one.
+    add.forEach(d => d.versions.slice().sort((x, y) => x.rev - y.rev).forEach((v, k, all) =>
+      rows.push([d.id, String(v.rev), v.effectiveDate, v.note || changelog_(k ? all[k - 1].body : '', v.body), v.body])));
     if (rows.length) vers.getRange(vers.getLastRow() + 1, 1, rows.length, VER_COLS.length).setValues(rows);
+    bumpLibrary_();
   }
   if (prompts.getLastRow() < 2) prompts.getRange(2, 1, SEED_PROMPTS.length, 1).setValues(SEED_PROMPTS.map(q => [q]));
 }

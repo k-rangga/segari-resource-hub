@@ -85,8 +85,12 @@ function parseBody(body, fallbackTitle) {
   return secs;
 }
 
-/** "**bold**" → <strong>. */
-const rich = text => String(text).split(/(\*\*[^*]+\*\*)/g).map((part, i) => /^\*\*[^*]+\*\*$/.test(part) ? html`<strong key=${i}>${part.slice(2, -2)}</strong>` : part);
+/** "**bold**" → <strong>, "[text](https://…)" → a link that opens in a new tab. */
+const rich = text => String(text).split(/(\*\*[^*]+\*\*|\[[^\]]+\]\(https?:\/\/[^\s)]+\))/g).map((part, i) => {
+  if (/^\*\*[^*]+\*\*$/.test(part)) return html`<strong key=${i}>${part.slice(2, -2)}</strong>`;
+  const m = /^\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)$/.exec(part);
+  return m ? html`<a key=${i} className="doc-link" href=${m[2]} target="_blank" rel="noopener noreferrer">${m[1]}</a>` : part;
+});
 
 /** "Label: Name | Role; Name | Role" per line. */
 const parseSignoff = text => String(text || '').split('\n').map(l => l.trim()).filter(Boolean).map(l => {
@@ -473,17 +477,21 @@ function App() {
       subs: x.blocks.filter(b => b.kind === 'h').map(b => ({ aid: b.aid, label: b.text.replace(/\*\*/g, '') })) })),
       ...(vers.length ? [{ id: 'log', label: 'Riwayat perubahan', on: s.active === 'log', subs: [] }] : [])];
     const signoff = parseSignoff(doc.signoff);
-    const cols = showToc && wide ? (xwide ? '320px minmax(0, 1fr)' : '280px minmax(0, 1fr)') : 'minmax(0, 1fr)';
+    const cols = showToc && wide ? (xwide ? '264px minmax(0, 1fr)' : '236px minmax(0, 1fr)') : 'minmax(0, 1fr)';
     // A section with sub-headings opens while it is being read; its chevron opens or closes it by hand.
     const tocRow = t => {
       const open = t.subs.length > 0 && (s.tocOpen[t.id] !== undefined ? s.tocOpen[t.id] : t.on);
       return html`
         <div key=${t.id} className="toc-item">
-          <div className=${'toc-row' + (t.on && !(open && s.activeSub) ? ' on' : '') + (t.on ? ' in' : '')}>
-            <button className="toc-link" onClick=${() => { scrollToSec(t.id); set({ activeSub: null }); }}>${t.label}</button>
-            ${t.subs.length > 0 && html`<button className="toc-chev" aria-expanded=${open} aria-label=${(open ? 'Tutup ' : 'Buka ') + t.label}
-              onClick=${() => set(p => ({ tocOpen: { ...p.tocOpen, [t.id]: !open } }))}>${I(open ? 'chevD' : 'chevR', 16)}</button>`}
-          </div>
+          <button className=${'toc-row' + (t.on && !(open && s.activeSub) ? ' on' : '')} aria-expanded=${t.subs.length ? open : undefined}
+            onClick=${() => {
+              // A section with sub-headings opens (and jumps there) or closes on any click of its row.
+              if (t.subs.length) set(p => ({ tocOpen: { ...p.tocOpen, [t.id]: !open } }));
+              if (!t.subs.length || !open) { scrollToSec(t.id); set({ activeSub: null }); }
+            }}>
+            <span className="toc-link">${t.label}</span>
+            ${t.subs.length > 0 && html`<span className="toc-chev">${I(open ? 'chevD' : 'chevR', 15)}</span>`}
+          </button>
           ${open && html`<div className="toc-subs">${t.subs.map(u => html`<button key=${u.aid} className=${'toc-sub' + (t.on && s.activeSub === u.aid ? ' on' : '')} onClick=${() => scrollToEl(u.aid)}>${u.label}</button>`)}</div>`}
         </div>`;
     };
@@ -498,7 +506,7 @@ function App() {
             <span className="eyebrow">Di halaman ini</span>
             <nav className="toc" aria-label="Di halaman ini">${toc.map(tocRow)}</nav>
           </aside></div>`}
-        <article className="article" style=${{ padding: wide ? '32px 64px 96px' : mid ? '24px 32px 60px' : undefined }}>
+        <article className="article" style=${{ padding: wide ? '28px 56px 96px' : mid ? '24px 32px 60px' : undefined }}>
           <div className="article-in">
             <nav className="crumbs" aria-label="Breadcrumb" style=${{ marginBottom: 20 }}>
               <button className="crumb" onClick=${goHome} aria-label="Beranda" style=${{ width: 36, justifyContent: 'center', padding: 0 }}>${I('home', 18)}</button><span className="sep">›</span>
@@ -506,20 +514,24 @@ function App() {
               <button className="crumb" onClick=${() => go({ step: 'list', dept: dDept.id, type: doc.type })}>${dDept.short}</button><span className="sep">›</span>
               <span className="crumb-pill">${doc.short}</span>
             </nav>
-            <span className="eyebrow lg">${docT.long}</span>
-            <h1 className="r-title">${docTitle(doc)}</h1>
-            <div className="r-meta">
-              <span className="code">${doc.code}</span>
-              <span className="dotsep">·</span><span>Berlaku ${viewV ? fmtDate(viewV.effectiveDate) : '–'}</span>
-              ${vers.length > 0 && html`<span className="dotsep">·</span><span className="rev-static">Rev ${viewV.rev}</span>`}
-              ${doc.pages && html`<span className="dotsep">·</span><span>${doc.pages} halaman</span>`}
-              <span className="dotsep">·</span><span>Berlaku untuk ${applies(doc)}</span>
+            <div className="r-head">
+              <div className="r-head-t">
+                <span className="eyebrow lg">${docT.long}</span>
+                <h1 className="r-title">${docTitle(doc)}</h1>
+              </div>
+              <div className="r-actions">
+                <button className="btn sm" onClick=${() => copyText(deepLink).then(() => flash('Link disalin'))}>${I('link', 16)}<span>Salin link</span></button>
+                <button className="btn sm" onClick=${() => go({ step: 'writer', w: EDIT_WRITER(doc) })}>${I('pen', 16)}<span>Perbarui</span></button>
+                ${vers.length > 0 && html`<button className="btn sm primary" onClick=${() => window.print()}>${I('download', 16)}<span>Unduh PDF</span></button>`}
+              </div>
             </div>
-            <div className="r-actions">
-              <button className="btn" onClick=${() => copyText(deepLink).then(() => flash('Link disalin'))}>${I('link', 18)}<span>Salin link</span></button>
-              ${html`<button className="btn" onClick=${() => go({ step: 'writer', w: EDIT_WRITER(doc) })}>${I('pen', 18)}<span>Perbarui</span></button>`}
-              ${vers.length > 0 && html`<button className="btn primary" onClick=${() => window.print()}>${I('download', 18)}<span>Unduh PDF</span></button>`}
-            </div>
+            <dl className="r-facts">
+              <div><dt>Kode dokumen</dt><dd className="code">${doc.code}</dd></div>
+              <div><dt>Berlaku sejak</dt><dd>${viewV ? fmtDate(viewV.effectiveDate) : '–'}</dd></div>
+              ${vers.length > 0 && html`<div><dt>Revisi</dt><dd>Rev ${viewV.rev}</dd></div>`}
+              ${doc.pages && html`<div><dt>Halaman</dt><dd>${doc.pages}</dd></div>`}
+              <div className="wide"><dt>Berlaku untuk</dt><dd>${applies(doc)}</dd></div>
+            </dl>
             ${showToc && !wide && html`
               <div className="chip-toc">${toc.map(t => html`<button key=${t.id} className=${'chip' + (t.on ? ' on' : '')} onClick=${() => scrollToSec(t.id)}>${t.label}</button>`)}</div>`}
             ${secs.length ? html`
@@ -577,6 +589,7 @@ function App() {
     { icon: 'heading', label: 'Subjudul', text: '# Judul bagian', select: 'Judul bagian' },
     { icon: 'listOl', label: 'Langkah', text: '1. Langkah pertama\n2. Langkah kedua', select: 'Langkah pertama' },
     { icon: 'list', label: 'Poin', text: '- Poin pertama\n- Poin kedua', select: 'Poin pertama' },
+    { icon: 'link', label: 'Tautan', text: '[Teks tautan](https://)', select: 'Teks tautan' },
     { icon: 'table', label: 'Tabel', text: '| Kolom 1 | Kolom 2 | Kolom 3 |\n| Isi | Isi | Isi |\n| Isi | Isi | Isi |', select: 'Kolom 1' }
   ];
   const kwSuggest = KW_SUGGEST.filter(k => !w.kw.some(x => x.toLowerCase() === k.toLowerCase())).slice(0, 5);
@@ -632,7 +645,7 @@ function App() {
             </div>
             <textarea id="w-body" ref=${bodyInputRef} className="textarea" value=${w.body} placeholder="Tulis prosedur langkah demi langkah…" onChange=${e => setW({ body: e.target.value })}></textarea>
           </div>
-          <span className="helper sm">Tabel: satu baris per baris tabel, kolom dipisah tanda |. Baris pertama jadi judul kolom.</span>
+          <span className="helper sm">Tautan: [teks](https://alamat). Tabel: satu baris per baris tabel, kolom dipisah tanda |, baris pertama jadi judul kolom.</span>
         </div>
       </section>
       <section className="w-sec" style=${{ gap: 14 }}>
