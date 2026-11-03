@@ -13,6 +13,7 @@ const TZ = 'Asia/Jakarta';
 const SPREADSHEET_ID = '1HwcfPdSgeYgLKs_QQovOOnkfipgspQ9nnnDBPbIkMkY';
 const DOC_SHEET = 'Dokumen';
 const VER_SHEET = 'Versi';
+const PROMPT_SHEET = 'Pertanyaan';
 const DOC_COLS = ['ID', 'Kode', 'Judul', 'Nama pendek', 'Jenis', 'Area', 'Halaman', 'Kata kunci', 'Persetujuan', 'Status', 'Diperbarui'];
 const VER_COLS = ['ID dokumen', 'Rev', 'Berlaku', 'Catatan', 'Isi'];
 const TYPES = ['sop', 'ik', 'spec', 'safety'];
@@ -39,8 +40,14 @@ function include(name) {
 
 // ---------------------------------------------------------------- library
 
-/** Every published document with its revisions, newest revision first. */
+/** Published documents (revisions newest first) and the example questions, all from the spreadsheet. */
 function getLibrary() {
+  const ss = library_();
+  const prompts = values_(ss.getSheetByName(PROMPT_SHEET), 1).map(r => String(r[0]).trim()).filter(Boolean);
+  return { docs: publishedDocs_(), prompts: prompts };
+}
+
+function publishedDocs_() {
   return readLibrary_().filter(d => d.status !== 'draf');
 }
 
@@ -52,10 +59,10 @@ function getLibrary() {
 function saveArticle(a, status) {
   a = clean_(a);
   if (status === 'published' && !a.title) throw new Error('Isi judul artikel dulu');
+  const ss = library_();
   const lock = LockService.getScriptLock();
   lock.waitLock(10000);
   try {
-    const ss = library_();
     const id = a.id || 'artikel-' + Utilities.getUuid().slice(0, 8);
     const docRow = [id, TYPE_CODE[a.type], a.title, a.title, a.type, a.areas.join(', '), '', a.keywords.join(', '), '',
       status === 'published' ? 'terbit' : 'draf', now_()];
@@ -82,7 +89,7 @@ function askMancu(question) {
   if (!key) return null;
   countQuestion_(props);
 
-  const chunks = pickChunks_(question, chunks_(getLibrary()));
+  const chunks = pickChunks_(question, chunks_(publishedDocs_()));
   const context = chunks.map(c => '[' + c.id + '] ' + c.label + '\n' + c.text).join('\n\n---\n\n');
   const model = props.getProperty('GEMINI_MODEL') || DEFAULT_MODEL;
   let res;
@@ -213,13 +220,25 @@ function countQuestion_(props) {
 
 // ---------------------------------------------------------------- spreadsheet
 
-/** Opens the library spreadsheet, adding the Dokumen and Versi sheets (and seeding them) when missing. */
+/** Opens the library spreadsheet, adding missing sheets and applying Seed.js once per SEED_VERSION. */
 function library_() {
   const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
-  let docs = ss.getSheetByName(DOC_SHEET), vers = ss.getSheetByName(VER_SHEET);
-  if (!docs) docs = setupSheet_(ss, DOC_SHEET, DOC_COLS, ['A', 'G', 'K']);
-  if (!vers) vers = setupSheet_(ss, VER_SHEET, VER_COLS, ['A', 'B', 'C']);
-  if (docs.getLastRow() < 2) seed_(docs, vers);
+  const docs = ss.getSheetByName(DOC_SHEET) || setupSheet_(ss, DOC_SHEET, DOC_COLS, ['A', 'G', 'K']);
+  const vers = ss.getSheetByName(VER_SHEET) || setupSheet_(ss, VER_SHEET, VER_COLS, ['A', 'B', 'C']);
+  const prompts = ss.getSheetByName(PROMPT_SHEET) || setupSheet_(ss, PROMPT_SHEET, ['Pertanyaan'], []);
+  const props = PropertiesService.getScriptProperties();
+  if (Number(props.getProperty('SEED_VERSION')) < SEED_VERSION) {
+    const lock = LockService.getScriptLock();
+    lock.waitLock(20000);
+    try {
+      if (Number(props.getProperty('SEED_VERSION')) < SEED_VERSION) {
+        syncSeed_(docs, vers, prompts);
+        props.setProperty('SEED_VERSION', String(SEED_VERSION));
+      }
+    } finally {
+      lock.releaseLock();
+    }
+  }
   return ss;
 }
 
@@ -231,13 +250,23 @@ function setupSheet_(ss, name, cols, textCols) {
   return sh;
 }
 
-function seed_(docs, vers) {
+/** Drops SEED_REMOVED_IDS, adds seed documents the sheet doesn't have yet, and fills an empty question list. Rows people added are left alone. */
+function syncSeed_(docs, vers, prompts) {
+  [docs, vers].forEach(sh => {
+    const ids = values_(sh, 1).map(r => String(r[0]).trim());
+    for (let i = ids.length - 1; i >= 0; i--) if (SEED_REMOVED_IDS.indexOf(ids[i]) >= 0) sh.deleteRow(i + 2);
+  });
+  const have = values_(docs, 1).map(r => String(r[0]).trim());
+  const add = SEED_DOCS.filter(d => have.indexOf(d.id) < 0);
   const stamp = now_();
-  docs.getRange(2, 1, SEED_DOCS.length, DOC_COLS.length).setValues(SEED_DOCS.map(d =>
-    [d.id, d.code, d.title, d.short, d.type, d.areas.join(', '), String(d.pages || ''), d.keywords.join(', '), d.signoff, 'terbit', stamp]));
-  const rows = [];
-  SEED_DOCS.forEach(d => d.versions.forEach(v => rows.push([d.id, String(v.rev), v.effectiveDate, v.note, v.body])));
-  if (rows.length) vers.getRange(vers.getLastRow() + 1, 1, rows.length, VER_COLS.length).setValues(rows);
+  if (add.length) {
+    docs.getRange(docs.getLastRow() + 1, 1, add.length, DOC_COLS.length).setValues(add.map(d =>
+      [d.id, d.code, d.title, d.short, d.type, d.areas.join(', '), String(d.pages || ''), d.keywords.join(', '), d.signoff, 'terbit', stamp]));
+    const rows = [];
+    add.forEach(d => d.versions.forEach(v => rows.push([d.id, String(v.rev), v.effectiveDate, v.note, v.body])));
+    if (rows.length) vers.getRange(vers.getLastRow() + 1, 1, rows.length, VER_COLS.length).setValues(rows);
+  }
+  if (prompts.getLastRow() < 2) prompts.getRange(2, 1, SEED_PROMPTS.length, 1).setValues(SEED_PROMPTS.map(q => [q]));
 }
 
 function readLibrary_() {

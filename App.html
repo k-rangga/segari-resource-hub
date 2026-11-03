@@ -21,6 +21,11 @@ const P = {
   home: ['M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8', 'M3 10a2 2 0 0 1 .709-1.528l7-5.999a2 2 0 0 1 2.582 0l7 5.999A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z'],
   rotate: ['M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8', 'M3 3v5h5'],
   arrowR: ['M5 12h14', 'm12 5 7 7-7 7'],
+  arrowUR: ['M7 7h10v10', 'M7 17 17 7'],
+  table: ['M12 3v18', 'M3 5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z', 'M3 9h18', 'M3 15h18'],
+  listOl: ['M10 12h11', 'M10 18h11', 'M10 6h11', 'M4 10h2', 'M4 6h1v4', 'M6 18H4c0-1 2-2 2-3s-1-1.5-2-1'],
+  list: ['M3 12h.01', 'M3 18h.01', 'M3 6h.01', 'M8 12h13', 'M8 18h13', 'M8 6h13'],
+  heading: ['M6 12h12', 'M6 20V4', 'M18 20V4'],
   pen: ['M12 20h9', 'M16.376 3.622a1 1 0 0 1 3.002 3.002L7.368 18.635a2 2 0 0 1-.855.506l-2.872.838a.5.5 0 0 1-.62-.62l.838-2.872a2 2 0 0 1 .506-.854z'],
   plus: ['M5 12h14', 'M12 5v14']
 };
@@ -32,7 +37,6 @@ const initials = n => String(n).trim().split(/\s+/).slice(0, 2).map(w => w[0] ||
 const Avatar = ({ name, size }) => html`<span className="avatar" title=${name} style=${{ width: size, height: size, fontSize: Math.round(size * .36) }}>${initials(name)}</span>`;
 
 // ------------------------------------------------------------ helpers
-const USER = { name: 'Rina Saputri', first: 'Rina', role: 'Staf Gudang / TL' };
 const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
 const fmtDate = iso => { const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso || ''); return m ? Number(m[3]) + ' ' + MON[Number(m[2]) - 1] + ' ' + m[1] : '–'; };
 const todayIso = () => { const d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); };
@@ -125,7 +129,7 @@ const run = (fn, ...args) => new Promise((ok, fail) => {
   google.script.run.withSuccessHandler(ok).withFailureHandler(fail)[fn](...args);
 });
 // Local preview: read the seed the build script drops next to the page.
-const loadLibrary = () => hasServer ? run('getLibrary') : fetch('seed.json').then(r => r.json()).catch(() => []);
+const loadLibrary = () => hasServer ? run('getLibrary') : fetch('seed.json').then(r => r.json()).catch(() => ({ docs: [], prompts: [] }));
 
 function copyText(text) {
   try { if (navigator.clipboard && window.isSecureContext) return navigator.clipboard.writeText(text); } catch (e) {}
@@ -153,10 +157,11 @@ function App() {
   });
   const set = patch => setS(p => ({ ...p, ...(typeof patch === 'function' ? patch(p) : patch) }));
   const [docs, setDocs] = useState(null);
+  const [prompts, setPrompts] = useState([]);
   const [vw, setVw] = useState(window.innerWidth);
   const [drawerW, setDrawerW] = useState(() => { try { return Number(localStorage.getItem('kb-drawer-w')) || DRAWER_W; } catch (e) { return DRAWER_W; } });
   const [dragging, setDragging] = useState(false);
-  const hdrRef = useRef(), heroRef = useRef(), browseRef = useRef(), headRef = useRef(), bodyRef = useRef();
+  const hdrRef = useRef(), heroRef = useRef(), browseRef = useRef(), headRef = useRef(), bodyRef = useRef(), bodyInputRef = useRef();
   const timers = useRef({}), askSeq = useRef(0);
   const sRef = useRef(s); sRef.current = s;
   const lib = docs || [];
@@ -223,8 +228,9 @@ function App() {
     window.addEventListener('keydown', onK);
     const ro = new ResizeObserver(() => document.documentElement.style.setProperty('--hdr', hdrH() + 'px'));
     if (hdrRef.current) ro.observe(hdrRef.current);
-    loadLibrary().then(list => {
-      const all = (list || []).map(prepDoc);
+    loadLibrary().then(res => {
+      const all = ((res && res.docs) || []).map(prepDoc);
+      setPrompts((res && res.prompts) || []);
       docsRef.current = all;
       setDocs(all);
       if (hasServer) google.script.url.getLocation(loc => { const d = all.find(x => x.id === loc.parameter.doc); if (d) openDoc(d); });
@@ -297,8 +303,6 @@ function App() {
             onClick=${() => isWriter ? goHome() : go({ step: 'writer' })}>
             ${I('pen', 16)}${mid && html`<span>${isWriter ? 'Keluar mode penulis' : 'Mode penulis'}</span>`}
           </button>
-          <${Avatar} name=${USER.name} size=${38} />
-          ${vw >= 900 && html`<span className="user-t"><b>${USER.name}</b><span>${USER.role}</span></span>`}
         </div>
       </div>
     </header>`;
@@ -323,10 +327,10 @@ function App() {
           ${s.q && html`<button className="icon-btn" title="Hapus" aria-label="Hapus" onMouseDown=${e => { e.preventDefault(); askSeq.current++; set({ q: '', homeQ: null, homeAns: null, homeTyping: false }); }}>${I('x', 18)}</button>`}
           <button className="spark-btn" title="Tanya Mancu" aria-label="Tanya Mancu" onMouseDown=${e => { e.preventDefault(); askHome(s.q); }}>${I('sparkles', 22)}</button>
         </div>
-        ${!s.homeQ && html`
+        ${!s.homeQ && prompts.length > 0 && html`
           <div className="examples">
             <span className="eyebrow">Coba tanya</span>
-            ${PROMPTS.map(p => html`<button key=${p} className="ex-link" onClick=${() => askHome(p)}>${p}</button>`)}
+            ${prompts.map(p => html`<button key=${p} className="ex-link" onClick=${() => askHome(p)}>${p}</button>`)}
           </div>`}
       </div>
       ${s.homeQ && html`
@@ -556,6 +560,24 @@ function App() {
   const setW = patch => set(p => ({ w: { ...p.w, ...(typeof patch === 'function' ? patch(p.w) : patch) } }));
   const addKw = t => setW(x => { t = String(t).trim(); return { kw: t && !x.kw.some(k => k.toLowerCase() === t.toLowerCase()) ? [...x.kw, t] : x.kw, kwDraft: '' }; });
   const setVer = (i, patch) => setW(x => ({ versions: x.versions.map((v, j) => j === i ? { ...v, ...patch } : v) }));
+  // Inserts a formatting snippet at the cursor, on its own lines, and selects the first placeholder.
+  const insertSnippet = (snippet, select) => {
+    const ta = bodyInputRef.current;
+    const v = w.body, start = ta ? ta.selectionStart : v.length, end = ta ? ta.selectionEnd : v.length;
+    const before = v.slice(0, start), after = v.slice(end);
+    const pre = !before ? '' : before.endsWith('\n\n') ? '' : before.endsWith('\n') ? '\n' : '\n\n';
+    const post = !after ? '\n' : after.startsWith('\n\n') ? '' : after.startsWith('\n') ? '\n' : '\n\n';
+    const text = pre + snippet + post;
+    setW({ body: before + text + after });
+    const from = before.length + pre.length + snippet.indexOf(select);
+    setTimeout(() => { if (ta) { ta.focus(); ta.setSelectionRange(from, from + select.length); } }, 0);
+  };
+  const SNIPPETS = [
+    { icon: 'heading', label: 'Subjudul', text: '# Judul bagian', select: 'Judul bagian' },
+    { icon: 'listOl', label: 'Langkah', text: '1. Langkah pertama\n2. Langkah kedua', select: 'Langkah pertama' },
+    { icon: 'list', label: 'Poin', text: '- Poin pertama\n- Poin kedua', select: 'Poin pertama' },
+    { icon: 'table', label: 'Tabel', text: '| Kolom 1 | Kolom 2 | Kolom 3 |\n| Isi | Isi | Isi |\n| Isi | Isi | Isi |', select: 'Kolom 1' }
+  ];
   const kwSuggest = KW_SUGGEST.filter(k => !w.kw.some(x => x.toLowerCase() === k.toLowerCase())).slice(0, 5);
   const payload = () => ({ id: w.id, title: w.title.trim(), type: w.type, areas: w.areas, body: w.body,
     versions: w.versions.map(v => ({ rev: v.rev, effectiveDate: v.date, note: v.note })), keywords: w.kw });
@@ -597,9 +619,15 @@ function App() {
           <div className="pills">${DEPTS.map(d => { const on = w.areas.includes(d.id); return html`<button key=${d.id} className=${'pill sm tint' + (on ? ' on' : '')} aria-pressed=${on}
             onClick=${() => setW(x => ({ areas: on ? x.areas.filter(a => a !== d.id) : [...x.areas, d.id] }))}>${d.short}</button>`; })}</div>
         </div>
-        <label className="field"><span>Isi artikel</span>
-          <textarea className="textarea" value=${w.body} placeholder="Tulis prosedur langkah demi langkah…" onChange=${e => setW({ body: e.target.value })}></textarea>
-        </label>
+        <div className="field"><label htmlFor="w-body">Isi artikel</label>
+          <div className="editor">
+            <div className="editor-bar" role="toolbar" aria-label="Format isi artikel">
+              ${SNIPPETS.map(sn => html`<button key=${sn.label} type="button" className="editor-btn" onClick=${() => insertSnippet(sn.text, sn.select)}>${I(sn.icon, 16)}<span>${sn.label}</span></button>`)}
+            </div>
+            <textarea id="w-body" ref=${bodyInputRef} className="textarea" value=${w.body} placeholder="Tulis prosedur langkah demi langkah…" onChange=${e => setW({ body: e.target.value })}></textarea>
+          </div>
+          <span className="helper sm">Tabel: satu baris per baris tabel, kolom dipisah tanda |. Baris pertama jadi judul kolom.</span>
+        </div>
       </section>
       <section className="w-sec" style=${{ gap: 14 }}>
         <div className="w-head"><span className="n">2</span><b>Versi</b>
@@ -634,7 +662,7 @@ function App() {
     </div>`;
 
   // ================================================================= drawer
-  const prompts = s.typing ? [] : PROMPTS.filter(p => !s.msgs.some(m => m.text === p));
+  const nextPrompts = s.typing ? [] : prompts.filter(p => !s.msgs.some(m => m.text === p));
   const width = clampW(drawerW);
   const startResize = e => {
     e.preventDefault();
@@ -675,7 +703,7 @@ function App() {
       <div className="d-sub"><span className="ic">${I('file', 16)}</span><span>${loading ? '–' : lib.filter(d => d.versions.length).length + ' dokumen terindeks' + (latest ? ' · terbaru ' + latest.code + ' Rev ' + latest.versions[0].rev : '')}</span></div>
       <div className="d-body" ref=${bodyRef}>
         ${!s.msgs.length && !s.typing && html`
-          <div className="hello"><b>Halo, ${USER.first}.</b><span>Tanya apa saja tentang SOP, IK, atau Specbook gudang. Setiap jawaban menyebut bagian dokumen sumbernya.</span></div>`}
+          <div className="hello"><b>Halo.</b><span>Tanya apa saja tentang SOP, IK, atau Specbook gudang. Setiap jawaban menyebut bagian dokumen sumbernya.</span></div>`}
         ${s.msgs.map((m, i) => m.user ? html`<div key=${i} className="msg-user">${m.text}</div>` : html`
           <div key=${i} className="msg-ai">
             <span className="who"><span className="spark-tile" style=${{ width: 26, height: 26 }}>${I('sparkles', 14)}</span>Mancu</span>
@@ -689,10 +717,10 @@ function App() {
               </div>`}
           </div>`)}
         ${s.typing && typingEl}
-        ${prompts.length > 0 && html`
-          <div style=${{ display: 'flex', flexDirection: 'column' }}>
+        ${nextPrompts.length > 0 && html`
+          <div className="prompt-list">
             <span className="eyebrow" style=${{ color: 'var(--sec2)', paddingBottom: 6 }}>${s.msgs.length ? 'Pertanyaan lain' : 'Coba tanyakan'}</span>
-            ${prompts.map(p => html`<button key=${p} className="prompt-row" onClick=${() => ask(p)}><span>${p}</span><span className="ic">${I('arrowR', 16)}</span></button>`)}
+            ${nextPrompts.map(p => html`<button key=${p} className="prompt-row" onClick=${() => ask(p)}><span className="t">${p}</span><span className="ic">${I('arrowUR', 18)}</span></button>`)}
           </div>`}
       </div>
       <form className="composer" onSubmit=${e => { e.preventDefault(); ask(s.draft); }}>

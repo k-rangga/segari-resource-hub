@@ -1,5 +1,5 @@
 <script>
-// Fixed vocab: document types, warehouse areas, and example questions. Documents themselves come from the sheet.
+// Fixed vocab: document types and warehouse areas. Documents and example questions come from the sheet.
 const TYPES = [
   { id: "sop", short: "SOP", long: "Standard Operational Procedure", desc: "Prosedur langkah demi langkah yang wajib diikuti setiap shift." },
   { id: "ik", short: "Instruksi Kerja", long: "Instruksi Kerja", desc: "Cara memakai WH Apps, PDT, dan internal tools." },
@@ -12,10 +12,5 @@ const DEPTS = [
   { id: "fc", label: "Inbound FC (Fulfillment Center)", short: "Inbound FC" },
   { id: "storage", label: "Penyimpanan & Putaway", short: "Penyimpanan & Putaway" },
   { id: "outbound", label: "Outbound & Pengiriman", short: "Outbound" },
-];
-const PROMPTS = [
-  "Apa yang harus dilakukan jika supplier tidak membawa PO?",
-  "Berapa batas maksimal tumpukan kardus sedang di atas palet?",
-  "Bagaimana alur handling barang defect di FC?",
 ];
 </script>

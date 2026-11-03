@@ -310,10 +310,12 @@ h1,h2,h3,p{margin:0}
 .src-card .tile{width:32px;height:32px;border-radius:8px;background:var(--tint);color:var(--green)}
 .src-card b{flex:1;font-size:14px;line-height:19px;font-weight:500;text-wrap:pretty}
 .src-card>.ic{color:var(--green)}
-.prompt-row{display:flex;align-items:center;gap:14px;text-align:left;padding:14px 4px;min-height:52px;border:0;border-bottom:1px solid var(--line);background:transparent;color:var(--ink);font-size:16px;line-height:23px;width:100%}
+.prompt-list{display:flex;flex-direction:column}
+.prompt-row{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;text-align:left;padding:14px 4px;min-height:52px;border:0;border-bottom:1px solid var(--line);background:transparent;color:var(--ink);font-size:16px;line-height:23px;width:100%}
 .prompt-row:hover{color:var(--green)}
-.prompt-row span{flex:1;text-wrap:pretty}
-.prompt-row .ic{color:var(--green)}
+.prompt-row .t{flex:1;min-width:0;text-wrap:pretty}
+.prompt-row .ic{color:var(--green);margin-top:2px;transition:transform .15s}
+.prompt-row:hover .ic{transform:translate(2px,-2px)}
 .composer{display:flex;flex-direction:column;gap:8px;padding:16px 24px 20px;border-top:1px solid var(--line);background:#fff}
 .composer-box{display:flex;align-items:center;gap:8px;padding:6px 6px 6px 16px;border:1px solid var(--ctl);border-radius:14px;background:#fff}
 .composer-box:hover{border-color:var(--hov)}
@@ -331,7 +333,15 @@ h1,h2,h3,p{margin:0}
 .text-btn{display:flex;align-items:center;gap:6px;border:0;background:transparent;padding:4px 0;font-size:14px;font-weight:500;color:var(--green);min-height:36px}
 .text-btn:hover{text-decoration:underline}
 .field{display:flex;flex-direction:column;gap:6px}
-.field>span{font-size:13px;font-weight:500;color:var(--sec)}
+.field>span,.field>label{font-size:13px;font-weight:500;color:var(--sec)}
+.editor{display:flex;flex-direction:column;border:1px solid var(--ctl);border-radius:8px;background:#fff;overflow:hidden}
+.editor:focus-within{border-color:var(--green);box-shadow:var(--ring)}
+.editor .textarea{border:0;border-radius:0;box-shadow:none}
+.editor .textarea:focus{box-shadow:none}
+.editor-bar{display:flex;flex-wrap:wrap;gap:2px;padding:4px;border-bottom:1px solid var(--line);background:var(--subtle)}
+.editor-btn{display:flex;align-items:center;gap:6px;height:36px;padding:0 10px;border:0;border-radius:6px;background:transparent;color:var(--sec);font-size:13px;font-weight:500}
+.editor-btn:hover{background:#fff;color:var(--green)}
+.helper.sm{font-size:12px;color:var(--muted)}
 .input{height:46px;padding:0 14px;border:1px solid var(--ctl);border-radius:8px;font-size:16px;color:var(--ink);outline:none;background:#fff;min-width:0;width:100%}
 .input:focus,.textarea:focus{border-color:var(--green);box-shadow:var(--ring)}
 .input.sm{height:40px;padding:0 12px;font-size:14px}
