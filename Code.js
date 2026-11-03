@@ -6,7 +6,7 @@
  *
  * Script Properties:
  *   GEMINI_API_KEY      required for Mancu (set it yourself; never commit it)
- *   GEMINI_MODEL        optional, default gemini-flash-lite-latest (fastest)
+ *   GEMINI_MODEL        optional, tried before the defaults (gemini-3.1-flash-lite, then gemini-3.5-flash)
  *   MANCU_DAILY_LIMIT   optional, default 300 questions per day for the whole app
  */
 
@@ -20,9 +20,12 @@ const VER_COLS = ['ID dokumen', 'Rev', 'Berlaku', 'Catatan', 'Isi'];
 const TYPES = ['sop', 'ik', 'spec', 'safety'];
 const AREAS = ['pc', 'dmg', 'fc', 'storage', 'outbound'];
 const TYPE_CODE = { sop: 'SOP', ik: 'IK', spec: 'Specbook', safety: 'SOP' };
-const DEFAULT_MODEL = 'gemini-flash-lite-latest';
+// Fastest first. 3.1 Flash-Lite answered in ~1 s where the -latest aliases took 17-50 s; the others step in when it is busy (503).
+const MODELS = ['gemini-3.1-flash-lite', 'gemini-3.5-flash', 'gemini-flash-lite-latest'];
 const DEFAULT_DAILY_LIMIT = 300;
-const CONTEXT_CHARS = 24000;
+const CONTEXT_CHARS = 60000;
+const CHUNK_TTL = 600;      // seconds the parsed library stays cached
+const ANSWER_TTL = 3600;    // seconds an identical question reuses its answer
 
 // ---------------------------------------------------------------- web app
 
@@ -85,6 +88,7 @@ function saveArticle(a, status) {
       const rev = old && old.versions.length ? old.versions[0].rev : 1;
       replaceVersions_(verSheet, id, [[id, rev, a.effectiveDate, note, a.body]]);
     }
+    bumpLibrary_();
     return readLibrary_().find(d => d.id === id);
   } finally {
     lock.releaseLock();
@@ -115,6 +119,7 @@ function compileChangelogs() {
       console.log(id + ' Rev ' + v.rev + ':\n' + note);
     });
   });
+  if (n) bumpLibrary_();
   console.log(n + ' catatan perubahan ditulis.' + (left ? ' Masih ada ' + left + ', jalankan compileChangelogs() sekali lagi.' : ' Semua sudah terisi.'));
 }
 
@@ -171,38 +176,76 @@ function sectionDiff_(prevBody, body) {
   return parts.join('\n\n').slice(0, CONTEXT_CHARS);
 }
 
-/** One generateContent call with a JSON response schema; returns the parsed JSON. */
+const THINKING = [{ thinkingLevel: 'minimal' }, { thinkingBudget: 0 }, { thinkingLevel: 'low' }, null];
+
+/** One generateContent call with a JSON response schema; returns the parsed JSON. Moves to the next model when one is busy. */
 function gemini_(key, system, text, schema, temperature) {
-  const model = PropertiesService.getScriptProperties().getProperty('GEMINI_MODEL') || DEFAULT_MODEL;
-  const res = UrlFetchApp.fetch('https://generativelanguage.googleapis.com/v1beta/models/' + encodeURIComponent(model) + ':generateContent', {
-    method: 'post',
-    contentType: 'application/json',
-    headers: { 'x-goog-api-key': key },
-    muteHttpExceptions: true,
-    payload: JSON.stringify({
-      systemInstruction: { parts: [{ text: system }] },
-      contents: [{ role: 'user', parts: [{ text: text }] }],
-      generationConfig: { temperature: temperature, responseMimeType: 'application/json', responseSchema: schema }
-    })
-  });
+  const own = PropertiesService.getScriptProperties().getProperty('GEMINI_MODEL');
+  const models = (own ? [own] : []).concat(MODELS.filter(m => m !== own));
+  let res;
+  for (let m = 0; m < models.length; m++) {
+    res = callModel_(key, models[m], system, text, schema, temperature);
+    if ([404, 429, 500, 503].indexOf(res.getResponseCode()) < 0) break;
+    console.warn(models[m] + ' HTTP ' + res.getResponseCode() + ', trying the next model');
+  }
   if (res.getResponseCode() !== 200) throw new Error('HTTP ' + res.getResponseCode() + ': ' + res.getContentText().slice(0, 500));
   const body = JSON.parse(res.getContentText());
   return JSON.parse(body.candidates[0].content.parts.map(p => p.text || '').join(''));
 }
 
-function askMancu(question) {
+/**
+ * Least thinking is the biggest speed win, but models accept different settings: try them fastest first
+ * and remember (per model, 6 hours) the first one the model accepts.
+ */
+function callModel_(key, model, system, text, schema, temperature) {
+  const url = 'https://generativelanguage.googleapis.com/v1beta/models/' + encodeURIComponent(model) + ':generateContent';
+  const cache = CacheService.getScriptCache(), memo = 'think:' + model;
+  const known = cache.get(memo);
+  let i = known === null ? 0 : Number(known), res;
+  for (; i < THINKING.length; i++) {
+    const generation = { temperature: temperature, maxOutputTokens: 2048, responseMimeType: 'application/json', responseSchema: schema };
+    if (THINKING[i]) generation.thinkingConfig = THINKING[i];
+    res = UrlFetchApp.fetch(url, {
+      method: 'post',
+      contentType: 'application/json',
+      headers: { 'x-goog-api-key': key },
+      muteHttpExceptions: true,
+      payload: JSON.stringify({
+        systemInstruction: { parts: [{ text: system }] },
+        contents: [{ role: 'user', parts: [{ text: text }] }],
+        generationConfig: generation
+      })
+    });
+    if (res.getResponseCode() !== 400 || i === THINKING.length - 1) break;
+  }
+  if (res.getResponseCode() === 200 && String(i) !== known) cache.put(memo, String(i), 21600);
+  return res;
+}
+
+function askMancu(question, docId) {
   question = String(question || '').trim().slice(0, 500);
+  docId = String(docId || '');
   if (!question) throw new Error('Pertanyaan kosong');
   const props = PropertiesService.getScriptProperties();
   const key = props.getProperty('GEMINI_API_KEY');
   if (!key) return null;
+
+  // Same question on the same page within the hour: answer instantly, without Gemini or the daily quota.
+  const cache = CacheService.getScriptCache();
+  const gen = props.getProperty('LIB_GEN') || '0';
+  const ansKey = 'ans:' + gen + ':' + Utilities.base64EncodeWebSafe(Utilities.computeDigest(Utilities.DigestAlgorithm.MD5, docId + '|' + question.toLowerCase().replace(/\s+/g, ' ')));
+  const hit = cache.get(ansKey);
+  if (hit) return JSON.parse(hit);
   countQuestion_(props);
 
-  const chunks = pickChunks_(question, chunks_(publishedDocs_()));
+  const all = cachedChunks_(cache, gen);
+  const chunks = pickChunks_(question, all, docId);
+  const active = docId && all.find(c => c.docId === docId);
   const context = chunks.map(c => '[' + c.id + '] ' + c.label + '\n' + c.text).join('\n\n---\n\n');
+  const focus = active ? 'DOKUMEN YANG SEDANG DIBUKA STAF: ' + active.head + '. Utamakan dokumen ini, tetapi boleh memakai dokumen lain bila jawabannya ada di sana.\n\n' : '';
   let out;
   try {
-    out = gemini_(key, SYSTEM_PROMPT, 'DOKUMEN:\n\n' + context + '\n\nPERTANYAAN STAF:\n' + question, ANSWER_SCHEMA, 0.2);
+    out = gemini_(key, SYSTEM_PROMPT, focus + 'DOKUMEN:\n\n' + context + '\n\nPERTANYAAN STAF:\n' + question, ANSWER_SCHEMA, 0.2);
   } catch (e) {
     // A missing "connect to an external service" authorization lands here too: run authorizeMancu() once in the editor.
     console.error('Gemini: ' + e.message);
@@ -211,13 +254,31 @@ function askMancu(question) {
   const byId = {};
   chunks.forEach(c => { byId[c.id] = c; });
   const seen = {};
-  return {
+  const result = {
     intro: String(out.intro || ''),
     items: (out.items || []).map(String).filter(Boolean).slice(0, 8),
     note: String(out.note || ''),
     sources: (out.sourceIds || []).map(id => byId[id]).filter(c => c && !seen[c.id] && (seen[c.id] = true))
       .map(c => ({ docId: c.docId, sec: c.sec, label: c.label }))
   };
+  try { cache.put(ansKey, JSON.stringify(result), ANSWER_TTL); } catch (e) {}
+  return result;
+}
+
+/** Section chunks of every published document, cached so most questions skip the spreadsheet read. */
+function cachedChunks_(cache, gen) {
+  const key = 'chunks:' + gen;
+  const hit = cache.get(key);
+  if (hit) { try { return JSON.parse(hit); } catch (e) {} }
+  const chunks = chunks_(publishedDocs_()).map(c => ({ id: c.id, docId: c.docId, sec: c.sec, label: c.label, head: c.head, keywords: c.keywords, text: c.text }));
+  try { cache.put(key, JSON.stringify(chunks), CHUNK_TTL); } catch (e) {} // over 100 KB: just read the sheet next time
+  return chunks;
+}
+
+/** Makes the next question re-read the library (after a save or a changelog run). */
+function bumpLibrary_() {
+  const props = PropertiesService.getScriptProperties();
+  props.setProperty('LIB_GEN', String((Number(props.getProperty('LIB_GEN')) || 0) + 1));
 }
 
 /** Run once from the Apps Script editor to grant the "connect to an external service" permission Mancu needs. */
@@ -230,7 +291,8 @@ function authorizeMancu() {
 const SYSTEM_PROMPT = [
   'Kamu adalah Mancu, asisten SOP gudang Segari. Staf gudang (inbound, QC, TL/Captain) bertanya lewat aplikasi.',
   'Jawab HANYA dari DOKUMEN yang diberikan. Jangan mengarang aturan, angka, jam, atau nama grup.',
-  'Jika dokumen tidak memuat jawabannya, katakan di intro bahwa kamu belum menemukan jawaban pasti di dokumen yang terindeks, dan sarankan bertanya ke TL/Captain shift.',
+  'Baca semua DOKUMEN dengan teliti sebelum menyimpulkan tidak ada jawaban; istilah bisa berbeda (mis. "PO" = Purchase Order).',
+  'Hanya jika benar-benar tidak ada, intro: "Saya belum menemukan jawabannya di SOP." dan satu item: "Tanyakan ke TL/Captain shift Anda."',
   'Bahasa Indonesia, kalimat pendek dan jelas, sentence case. Boleh memakai "Saya".',
   'intro: satu kalimat jawaban langsung. items: langkah atau poin penting secara berurutan, maksimal 6, tanpa nomor di depan.',
   'note: peringatan penting jika ada (mis. kondisi inbound ditolak), selain itu string kosong.',
@@ -274,7 +336,7 @@ function chunks_(docs) {
     });
     function push() {
       const c = cur, idx = i;
-      out.push({ docId: d.id, sec: 's' + idx, label: d.code + ' · ' + c.title, keywords: d.keywords.join(' '),
+      out.push({ docId: d.id, sec: 's' + idx, label: d.code + ' · ' + c.title, head: head, keywords: d.keywords.join(' '),
         get text() { return head + ' (Rev ' + v.rev + ')\n' + c.title + '\n' + c.lines.join('\n').trim(); } });
     }
   });
@@ -284,12 +346,12 @@ function chunks_(docs) {
 
 const STOP = 'apa yang harus jika dan untuk bagaimana berapa dari ada atau dengan saat tidak sudah pada ini itu bisa kalau mana kapan siapa'.split(' ');
 
-/** Most relevant chunks first, within the context budget. */
-function pickChunks_(question, chunks) {
-  const words = question.toLowerCase().split(/[^a-z0-9]+/).filter(w => w.length >= 3 && STOP.indexOf(w) < 0);
+/** The open document's sections first, then the most relevant other chunks, within the context budget. */
+function pickChunks_(question, chunks, docId) {
+  const words = question.toLowerCase().split(/[^a-z0-9]+/).filter(w => w.length >= 2 && STOP.indexOf(w) < 0);
   const scored = chunks.map(c => {
     const hay = (c.label + ' ' + c.keywords + ' ' + c.text).toLowerCase();
-    return { c: c, n: words.reduce((s, w) => s + (hay.indexOf(w) >= 0 ? 1 : 0), 0) };
+    return { c: c, n: (c.docId === docId ? 100 : 0) + words.reduce((s, w) => s + (hay.indexOf(w) >= 0 ? 1 : 0), 0) };
   }).sort((a, b) => b.n - a.n);
   const picked = [];
   let size = 0;

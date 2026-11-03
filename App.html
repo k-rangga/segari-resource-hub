@@ -22,6 +22,7 @@ const P = {
   rotate: ['M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8', 'M3 3v5h5'],
   arrowR: ['M5 12h14', 'm12 5 7 7-7 7'],
   arrowUR: ['M7 7h10v10', 'M7 17 17 7'],
+  arrowUp: ['m5 12 7-7 7 7', 'M12 19V5'],
   table: ['M12 3v18', 'M3 5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z', 'M3 9h18', 'M3 15h18'],
   listOl: ['M10 12h11', 'M10 18h11', 'M10 6h11', 'M4 10h2', 'M4 6h1v4', 'M6 18H4c0-1 2-2 2-3s-1-1.5-2-1'],
   list: ['M3 12h.01', 'M3 18h.01', 'M3 6h.01', 'M8 12h13', 'M8 18h13', 'M8 6h13'],
@@ -170,7 +171,6 @@ function App() {
   const lib = docs || [];
   const docsRef = useRef(lib); docsRef.current = lib;
   const findDoc = id => docsRef.current.find(d => d.id === id);
-  const latest = docsRef.current.filter(d => d.versions.length).sort((a, b) => (b.versions[0].effectiveDate > a.versions[0].effectiveDate ? 1 : -1))[0];
 
   // ---- navigation
   const go = (patch, after) => {
@@ -194,7 +194,9 @@ function App() {
 
   // ---- Mancu: Gemini on the server, local document search when no key is set
   const aiMsg = a => ({ ai: true, intro: a.intro, items: a.items || [], note: a.note || '', sources: a.sources || [], error: !!a.error });
-  const answer = text => run('askMancu', text)
+  // On a document page Mancu reads that document first; elsewhere it reads every published one.
+  const ctxDocId = () => sRef.current.step === 'reader' ? sRef.current.docId : '';
+  const answer = (text, docId) => run('askMancu', text, docId || '')
     .then(a => a || localAnswer(text, docsRef.current))
     .catch(err => ({ error: true, intro: String((err && err.message) || 'Mancu sedang tidak tersedia. Coba lagi sebentar.').replace(/^(Error|Exception):\s*/, ''), items: [], note: '', sources: [] }));
   const ask = text => {
@@ -202,7 +204,7 @@ function App() {
     if (!text) return;
     const seq = ++askSeq.current;
     set(p => ({ chatOpen: true, typing: true, draft: '', msgs: [...p.msgs, { user: true, text }] }));
-    answer(text).then(a => { if (seq === askSeq.current) set(p => ({ typing: false, msgs: [...p.msgs, aiMsg(a)] })); });
+    answer(text, ctxDocId()).then(a => { if (seq === askSeq.current) set(p => ({ typing: false, msgs: [...p.msgs, aiMsg(a)] })); });
   };
   const askHome = text => {
     text = (text || '').trim();
@@ -269,6 +271,9 @@ function App() {
   const isWriter = s.step === 'writer';
   const loading = docs === null;
   const typingEl = html`<div className="typing"><span className="dot"></span>Mancu sedang membaca SOP…</div>`;
+  const ctxDoc = s.step === 'reader' ? lib.find(d => d.id === s.docId) : null;
+  const readable = lib.filter(d => d.versions.length).length;
+  const chatTyping = html`<div className="typing"><span className="dot"></span>Membaca ${ctxDoc ? ctxDoc.title : readable + ' dokumen'}…</div>`;
 
   // ================================================================= header
   const ql = s.q.trim().toLowerCase();
@@ -363,7 +368,7 @@ function App() {
                   </div>`}
                 <div className="ans-foot">
                   <button className="link-strong" onClick=${() => set({ chatOpen: true, msgs: [{ user: true, text: s.homeQ }, ans] })}><span>Lanjutkan di chat</span>${I('arrowR', 16)}</button>
-                  <span className="disclaimer">Mancu bisa salah. Pastikan langkah kritis sesuai SOP yang dikutip.</span>
+                  <span className="disclaimer">Mancu bisa salah. Cek kembali di SOP yang dikutip.</span>
                 </div>`}
             </div>`}
           ${s.homeTab === 'kw' && html`
@@ -492,10 +497,6 @@ function App() {
           <div className="sidetoc"><aside>
             <span className="eyebrow">Di halaman ini</span>
             <nav className="toc" aria-label="Di halaman ini">${toc.map(tocRow)}</nav>
-            <button className="ask-card" onClick=${() => set({ chatOpen: true })}>
-              <span className="spark-tile" style=${{ width: 28, height: 28 }}>${I('sparkles', 14)}</span>
-              <span className="t"><b>Tanya Mancu tentang SOP ini</b><span>Setiap jawaban menyebut bagian sumbernya.</span></span>
-            </button>
           </aside></div>`}
         <article className="article" style=${{ padding: wide ? '32px 64px 96px' : mid ? '24px 32px 60px' : undefined }}>
           <div className="article-in">
@@ -699,44 +700,43 @@ function App() {
         tabIndex="0" aria-valuemin=${DRAWER_MIN} aria-valuemax=${drawerMax()} aria-valuenow=${width}
         onPointerDown=${startResize} onKeyDown=${keyResize} onDoubleClick=${() => { setDrawerW(DRAWER_W); saveW(DRAWER_W); }}><span></span></div>`}
       <div className="d-head">
-        <span className="d-tile">${I('sparkles', 22)}</span>
+        <span className="d-tile">${I('sparkles', 16)}</span>
         <div className="d-name">
-          <span>Mancu<span className="badge-ai">AI</span></span>
-          <span className="d-status"><span className="dot ring"></span>Online & terindeks ke SOP gudang</span>
+          <b>Mancu</b>
+          <span className="d-ctx" title=${ctxDoc ? 'Mancu mengutamakan dokumen yang sedang Anda buka' : 'Mancu membaca semua dokumen yang terbit'}>
+            ${loading ? 'Memuat dokumen…' : ctxDoc ? html`Membaca <b>${ctxDoc.title}</b>` : html`Membaca semua SOP · ${readable} dokumen`}
+          </span>
         </div>
-        <button className="d-btn" title="Chat baru" aria-label="Chat baru" onClick=${() => { askSeq.current++; set({ msgs: [], typing: false }); }}>${I('rotate', 18)}</button>
-        <button className="d-btn" title="Tutup" aria-label="Tutup" onClick=${() => set({ chatOpen: false })}>${I('x', 22)}</button>
+        <button className="d-btn" title="Chat baru" aria-label="Chat baru" onClick=${() => { askSeq.current++; set({ msgs: [], typing: false }); }}>${I('rotate', 17)}</button>
+        <button className="d-btn" title="Tutup" aria-label="Tutup" onClick=${() => set({ chatOpen: false })}>${I('x', 19)}</button>
       </div>
-      <div className="d-sub"><span className="ic">${I('file', 16)}</span><span>${loading ? '–' : lib.filter(d => d.versions.length).length + ' dokumen terindeks' + (latest ? ' · terbaru ' + latest.code + ' Rev ' + latest.versions[0].rev : '')}</span></div>
       <div className="d-body" ref=${bodyRef}>
         ${!s.msgs.length && !s.typing && html`
-          <div className="hello"><b>Halo.</b><span>Tanya apa saja tentang SOP, IK, atau Specbook gudang. Setiap jawaban menyebut bagian dokumen sumbernya.</span></div>`}
+          <div className="hello"><b>Ada yang bisa dibantu?</b><span>${ctxDoc ? 'Tanyakan apa saja tentang ' + ctxDoc.title + '.' : 'Tanyakan prosedur, batas, atau alur kerja gudang.'} Setiap jawaban menyebut bagian sumbernya.</span></div>`}
         ${s.msgs.map((m, i) => m.user ? html`<div key=${i} className="msg-user">${m.text}</div>` : html`
           <div key=${i} className="msg-ai">
-            <span className="who"><span className="spark-tile" style=${{ width: 26, height: 26 }}>${I('sparkles', 14)}</span>Mancu</span>
             ${m.error ? html`<span className="msg-note">${m.intro}</span>` : html`<span className="intro">${m.intro}</span>`}
-            ${m.items.length > 0 && html`<ol className="numlist">${m.items.map((t, j) => html`<li key=${j}><span>${j + 1}.</span><span>${rich(t)}</span></li>`)}</ol>`}
+            ${m.items.length > 0 && html`<ol className="ans-list">${m.items.map((t, j) => html`<li key=${j}>${rich(t)}</li>`)}</ol>`}
             ${m.note && html`<span className="msg-note">${m.note}</span>`}
             ${m.sources.length > 0 && html`
-              <div className="src-cards">
-                <span className="eyebrow" style=${{ color: 'var(--sec2)' }}>Sumber</span>
-                ${m.sources.map(src => html`<button key=${src.label} className="src-card" onClick=${() => openSource(src)}><span className="tile">${I('file', 16)}</span><b>${src.label}</b><span className="ic">${I('arrowR', 16)}</span></button>`)}
+              <div className="src-chips">
+                ${m.sources.map(src => html`<button key=${src.label} className="src-chip" onClick=${() => openSource(src)}>${I('file', 13)}<span>${src.label}</span></button>`)}
               </div>`}
           </div>`)}
-        ${s.typing && typingEl}
+        ${s.typing && chatTyping}
         ${nextPrompts.length > 0 && html`
           <div className="prompt-list">
-            <span className="eyebrow" style=${{ color: 'var(--sec2)', paddingBottom: 6 }}>${s.msgs.length ? 'Pertanyaan lain' : 'Coba tanyakan'}</span>
-            ${nextPrompts.map(p => html`<button key=${p} className="prompt-row" onClick=${() => ask(p)}><span className="t">${p}</span><span className="ic">${I('arrowUR', 18)}</span></button>`)}
+            <span className="prompt-head">${s.msgs.length ? 'Pertanyaan lain' : 'Coba tanyakan'}</span>
+            ${nextPrompts.map(p => html`<button key=${p} className="prompt-row" onClick=${() => ask(p)}><span className="t">${p}</span><span className="ic">${I('arrowUR', 15)}</span></button>`)}
           </div>`}
       </div>
       <form className="composer" onSubmit=${e => { e.preventDefault(); ask(s.draft); }}>
         <div className=${'composer-box' + (s.focus === 'chat' ? ' focus' : '')}>
-          <input value=${s.draft} placeholder="Tanyakan prosedur, batas, atau alur…" aria-label="Pertanyaan untuk Mancu" onChange=${e => set({ draft: e.target.value })}
+          <input value=${s.draft} placeholder=${ctxDoc ? 'Tanya tentang ' + ctxDoc.title + '…' : 'Tanya Mancu…'} aria-label="Pertanyaan untuk Mancu" onChange=${e => set({ draft: e.target.value })}
             onFocus=${() => set({ focus: 'chat' })} onBlur=${() => set(p => p.focus === 'chat' ? { focus: null } : {})} />
-          <button type="submit" className="send" title="Kirim" aria-label="Kirim">${I('send')}</button>
+          <button type="submit" className="send" title="Kirim" aria-label="Kirim" disabled=${!s.draft.trim()}>${I('arrowUp', 18)}</button>
         </div>
-        <span className="disclaimer">Mancu bisa salah. Pastikan langkah kritis sesuai SOP yang dikutip.</span>
+        <span className="disclaimer">Mancu bisa salah. Cek kembali di SOP yang dikutip.</span>
       </form>
     </aside>`;
 
