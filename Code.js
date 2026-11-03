@@ -1,6 +1,6 @@
 /**
  * Segari Knowledge Base — server side.
- * Documents live in a spreadsheet (sheets "Dokumen" and "Versi"), created and filled from Seed.js on first load.
+ * Documents live in the Knowledge Base spreadsheet (sheets "Dokumen" and "Versi"), filled from Seed.js when empty.
  * Mancu answers with Gemini, grounded on the latest revision of every document.
  *
  * Script Properties:
@@ -10,7 +10,7 @@
  */
 
 const TZ = 'Asia/Jakarta';
-const SS_PROP = 'ARTICLE_SPREADSHEET_ID';
+const SPREADSHEET_ID = '1HwcfPdSgeYgLKs_QQovOOnkfipgspQ9nnnDBPbIkMkY';
 const DOC_SHEET = 'Dokumen';
 const VER_SHEET = 'Versi';
 const DOC_COLS = ['ID', 'Kode', 'Judul', 'Nama pendek', 'Jenis', 'Area', 'Halaman', 'Kata kunci', 'Persetujuan', 'Status', 'Diperbarui'];
@@ -199,17 +199,12 @@ function countQuestion_(props) {
 
 // ---------------------------------------------------------------- spreadsheet
 
-/** Opens the library spreadsheet, creating it and its sheets (and seeding them) when missing. */
+/** Opens the library spreadsheet, adding the Dokumen and Versi sheets (and seeding them) when missing. */
 function library_() {
-  const props = PropertiesService.getScriptProperties();
-  const id = props.getProperty(SS_PROP);
-  const ss = id ? SpreadsheetApp.openById(id) : SpreadsheetApp.create('Segari Knowledge Base – Dokumen');
-  if (!id) props.setProperty(SS_PROP, ss.getId());
+  const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
   let docs = ss.getSheetByName(DOC_SHEET), vers = ss.getSheetByName(VER_SHEET);
   if (!docs) docs = setupSheet_(ss, DOC_SHEET, DOC_COLS, ['A', 'G', 'K']);
   if (!vers) vers = setupSheet_(ss, VER_SHEET, VER_COLS, ['A', 'B', 'C']);
-  const blank = ss.getSheetByName('Sheet1');
-  if (blank && ss.getSheets().length > 2 && blank.getLastRow() === 0) ss.deleteSheet(blank);
   if (docs.getLastRow() < 2) seed_(docs, vers);
   return ss;
 }
