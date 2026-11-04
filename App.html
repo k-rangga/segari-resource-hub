@@ -28,12 +28,23 @@ const P = {
   list: ['M3 12h.01', 'M3 18h.01', 'M3 6h.01', 'M8 12h13', 'M8 18h13', 'M8 6h13'],
   heading: ['M6 12h12', 'M6 20V4', 'M18 20V4'],
   pen: ['M12 20h9', 'M16.376 3.622a1 1 0 0 1 3.002 3.002L7.368 18.635a2 2 0 0 1-.855.506l-2.872.838a.5.5 0 0 1-.62-.62l.838-2.872a2 2 0 0 1 .506-.854z'],
-  plus: ['M5 12h14', 'M12 5v14']
+  plus: ['M5 12h14', 'M12 5v14'],
+  eraser: ['m7 21-4.3-4.3a1 1 0 0 1 0-1.4l10-10a1 1 0 0 1 1.4 0l5.6 5.6a1 1 0 0 1 0 1.4L12 21', 'M22 21H7', 'm5 11 9 9'],
+  undo: ['M3 7v6h6', 'M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13'],
+  redo: ['M21 7v6h-6', 'M3 17a9 9 0 0 1 9-9 9 9 0 0 1 6 2.3l3 2.7'],
+  bold: ['M6 12h9a4 4 0 0 1 0 8H7a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h7a4 4 0 0 1 0 8'],
+  italic: ['M19 4h-9', 'M14 20H5', 'M15 4 9 20'],
+  underline: ['M6 4v6a6 6 0 0 0 12 0V4', 'M4 20h16'],
+  highlight: ['m9 11-6 6v3h9l3-3', 'm22 12-4.6 4.6a2 2 0 0 1-2.8 0l-5.2-5.2a2 2 0 0 1 0-2.8L14 4'],
+  thumbUp: ['M7 10v12', 'M15 5.88 14 10h5.83a2 2 0 0 1 1.92 2.56l-2.33 8A2 2 0 0 1 17.5 22H4a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2h2.76a2 2 0 0 0 1.79-1.11L12 2a3.13 3.13 0 0 1 3 3.88Z'],
+  thumbDown: ['M17 14V2', 'M9 18.12 10 14H4.17a2 2 0 0 1-1.92-2.56l2.33-8A2 2 0 0 1 6.5 2H20a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-2.76a2 2 0 0 0-1.79 1.11L12 22a3.13 3.13 0 0 1-3-3.88Z']
 };
 const I = (n, s = 20) => html`<svg width=${s} height=${s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style=${{ flexShrink: 0, display: 'block' }}>${P[n].map(d => html`<path key=${d} d=${d} />`)}</svg>`;
 const Logo = ({ mark, h }) => html`<span className="ic" dangerouslySetInnerHTML=${{ __html: mark
   ? '<svg viewBox="0 0 217 239" height="' + h + '" style="display:block;height:' + h + 'px;width:auto" role="img" aria-label="Segari" xmlns="http://www.w3.org/2000/svg">' + MARK_PATHS + '</svg>'
   : '<svg viewBox="0 20 940 386" height="' + h + '" style="display:block;height:' + h + 'px;width:auto" role="img" aria-label="Segari" xmlns="http://www.w3.org/2000/svg">' + LOGO_PATHS + '</svg>' }} />`;
+/** The one list row used everywhere: browse, search results and keyword hits. */
+const Row = ({ title, meta, text, onClick }) => html`<button className="row" onClick=${onClick}><span className="t"><b>${title}</b>${meta && html`<span className="meta">${meta}</span>`}${text && html`<span className="ex">${text}</span>`}</span><i>${I('chevR', 18)}</i></button>`;
 const initials = n => String(n).trim().split(/\s+/).slice(0, 2).map(w => w[0] || '').join('').toUpperCase();
 const Avatar = ({ name, size }) => html`<span className="avatar" title=${name} style=${{ width: size, height: size, fontSize: Math.round(size * .36) }}>${initials(name)}</span>`;
 
@@ -45,6 +56,8 @@ const typeOf = id => TYPES.find(t => t.id === id) || TYPES[0];
 const deptOf = id => DEPTS.find(d => d.id === id);
 const revLabel = d => d.versions.length ? String(d.versions[0].rev) : '–';
 const docTitle = d => d.code && d.code !== TYPE_SHORT[d.type] && /\d/.test(d.code) ? d.title : (d.code ? d.code + ' - ' : '') + d.title;
+/** Contents label: a heading without its trailing "(…)", which stays in the body heading. */
+const tocLabel = t => String(t).replace(/\*\*|<\/?(?:i|u|mark)>/g, '').replace(/\s*\([^)]*\)\s*$/, '') || String(t);
 const TYPE_SHORT = { sop: 'SOP', ik: 'IK', spec: 'Specbook', safety: 'SOP' };
 const applies = d => d.areas.map(x => (deptOf(x) || {}).short).filter(Boolean).join(' · ') || '–';
 
@@ -72,7 +85,7 @@ function parseBody(body, fallbackTitle) {
     if ((m = /^[-•]\s+(.*)$/.exec(line))) { flush(); const b = last(); if (b && b.kind === 'bullets') b.items.push(m[1]); else cur.blocks.push({ kind: 'bullets', items: [m[1]] }); return; }
     if (/^\|.*\|$/.test(line)) {
       flush();
-      const cells = line.slice(1, -1).split('|').map(c => c.trim());
+      const cells = line.slice(1, -1).split(/(?<!\\)\|/).map(c => c.trim().replace(/\\\|/g, '|'));
       if (cells.every(c => /^:?-{2,}:?$/.test(c))) return;
       const b = last();
       if (b && b.kind === 'table') b.rows.push(cells); else cur.blocks.push({ kind: 'table', head: cells, rows: [] });
@@ -85,11 +98,13 @@ function parseBody(body, fallbackTitle) {
   return secs;
 }
 
-/** "**bold**" → <strong>, "[text](https://…)" → a link that opens in a new tab. */
-const rich = text => String(text).split(/(\*\*[^*]+\*\*|\[[^\]]+\]\(https?:\/\/[^\s)]+\))/g).map((part, i) => {
-  if (/^\*\*[^*]+\*\*$/.test(part)) return html`<strong key=${i}>${part.slice(2, -2)}</strong>`;
+/** "**bold**", "<i>", "<u>", "<mark>" and "[text](https://…)" (a link that opens in a new tab), in any nesting. */
+const rich = text => String(text).split(/(\*\*[^*]+\*\*|<i>.*?<\/i>|<u>.*?<\/u>|<mark>.*?<\/mark>|\[[^\]]+\]\(https?:\/\/[^\s)]+\))/g).map((part, i) => {
+  if (/^\*\*[^*]+\*\*$/.test(part)) return html`<strong key=${i}>${rich(part.slice(2, -2))}</strong>`;
+  const tag = /^<(i|u|mark)>(.*)<\/\1>$/.exec(part);
+  if (tag) return React.createElement(tag[1], { key: i }, rich(tag[2]));
   const m = /^\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)$/.exec(part);
-  return m ? html`<a key=${i} className="doc-link" href=${m[2]} target="_blank" rel="noopener noreferrer">${m[1]}</a>` : part;
+  return m ? html`<a key=${i} className="doc-link" href=${m[2]} target="_blank" rel="noopener noreferrer">${rich(m[1])}</a>` : part;
 });
 
 /** "Label: Name | Role; Name | Role" per line. */
@@ -103,6 +118,19 @@ const STOP = new Set('apa yang harus jika dan untuk bagaimana berapa dari ada at
 const words = q => q.toLowerCase().split(/[^a-z0-9]+/).filter(w => w.length >= 3 && !STOP.has(w));
 const docHay = d => (d.code + ' ' + d.title + ' ' + d.short + ' ' + d.keywords.join(' ')).toLowerCase();
 
+/** A section's readable lines, without markup or link addresses. */
+function secLines(sec) {
+  const plain = t => String(t).replace(/\*\*|<\/?(?:i|u|mark)>/g, '').replace(/\[([^\]]+)\]\([^)]+\)/g, '$1');
+  const lines = [];
+  sec.blocks.forEach(b => {
+    if (b.kind === 'p' || b.kind === 'h') lines.push(b.text);
+    else if (b.kind === 'steps') b.items.forEach(it => lines.push(it.text));
+    else if (b.kind === 'bullets') b.items.forEach(t => lines.push(t));
+    else if (b.kind === 'table') [b.head, ...b.rows].forEach(r => lines.push(r.join(' · ')));
+  });
+  return lines.map(plain);
+}
+
 function kwSearch(q, docs) {
   const ws = words(q);
   if (!ws.length) return [];
@@ -110,7 +138,7 @@ function kwSearch(q, docs) {
   docs.forEach(d => {
     if (!d.versions.length) return;
     parseBody(d.versions[0].body, d.title).forEach(s => {
-      const text = (s.title + ' ' + JSON.stringify(s.blocks)).toLowerCase();
+      const text = (s.title + ' ' + secLines(s).join(' ')).toLowerCase();
       const n = ws.filter(w => text.includes(w)).length;
       if (n) secs.push({ d, s, n });
     });
@@ -119,23 +147,20 @@ function kwSearch(q, docs) {
   return [...secs.sort((a, b) => b.n - a.n).slice(0, 5), ...ds.sort((a, b) => b.n - a.n).slice(0, 5)];
 }
 
-/** The section line that matches the most words, trimmed around the first match, without markup. */
+/** The section line that matches the most words, trimmed around the first match. */
 function excerpt(sec, ws) {
-  const plain = t => String(t).replace(/\*\*/g, '').replace(/\[([^\]]+)\]\([^)]+\)/g, '$1');
-  const lines = [];
-  sec.blocks.forEach(b => {
-    if (b.kind === 'p' || b.kind === 'h') lines.push(b.text);
-    else if (b.kind === 'steps') b.items.forEach(it => lines.push(it.text));
-    else if (b.kind === 'bullets') b.items.forEach(t => lines.push(t));
-    else if (b.kind === 'table') [b.head, ...b.rows].forEach(r => lines.push(r.join(' · ')));
-  });
+  const lines = secLines(sec);
   const score = l => ws.filter(w => l.toLowerCase().includes(w)).length;
-  const best = lines.reduce((b, l) => score(l) > score(b) ? l : b, lines[0] || '');
-  const text = plain(best);
+  const text = lines.reduce((b, l) => score(l) > score(b) ? l : b, lines[0] || '');
   const at = Math.max(0, Math.min(...ws.map(w => text.toLowerCase().indexOf(w)).filter(i => i >= 0), text.length) - 40);
   const cut = text.slice(at, at + 120);
   return (at > 0 ? '…' : '') + cut + (at + 120 < text.length ? '…' : '');
 }
+
+/** Wraps the searched words in <mark> so a result shows why it matched. */
+const markWords = (text, ws) => ws.length
+  ? String(text).split(new RegExp('(' + ws.join('|') + ')', 'ig')).map((p, i) => i % 2 ? html`<mark key=${i}>${p}</mark>` : p)
+  : text;
 
 /** Used when Gemini is not configured: point at the closest documents. */
 function localAnswer(text, docs) {
@@ -165,10 +190,315 @@ function copyText(text) {
 }
 
 // ------------------------------------------------------------ app
-const NEW_WRITER = () => ({ id: '', editing: false, nextRev: 1, title: '', type: 'sop', areas: [], body: '', date: todayIso(), kw: [], kwDraft: '' });
+// `base` is the writer's untouched state: anything different is unsaved work. `edKey` remounts the editor on new content.
+const snapW = w => JSON.stringify([w.title, w.type, w.areas, w.body, w.date, w.kw]);
+const withBase = w => ({ ...w, base: snapW(w), edKey: Date.now() });
+const NEW_WRITER = () => withBase({ id: '', key: 'baru-' + Math.random().toString(36).slice(2, 10), editing: false, nextRev: 1, title: '', type: 'sop', areas: [], body: '', date: todayIso(), kw: [], kwDraft: '' });
 /** Writer state for publishing a new revision of an existing document. */
-const EDIT_WRITER = d => ({ id: d.id, editing: true, nextRev: d.versions.length ? Math.max(...d.versions.map(v => v.rev)) + 1 : 1, title: d.title, type: d.type,
+const EDIT_WRITER = d => withBase({ id: d.id, key: 'rev-' + Math.random().toString(36).slice(2, 10), editing: true, nextRev: d.versions.length ? Math.max(...d.versions.map(v => v.rev)) + 1 : 1, title: d.title, type: d.type,
   areas: d.areas, body: d.versions.length ? d.versions[0].body : '', date: todayIso(), kw: d.keywords, kwDraft: '' });
+const draftOf = w => ({ key: w.key, docId: w.id, title: w.title, type: w.type, areas: w.areas, date: w.date, keywords: w.kw, body: w.body, savedAt: Date.now() });
+
+// The browser backup: written within a moment of typing, so a closed tab or lost connection loses nothing.
+const LOCAL_DRAFT = 'kb-writer:';
+const localPut = d => { try { localStorage.setItem(LOCAL_DRAFT + d.key, JSON.stringify(d)); } catch (e) {} };
+const localDel = key => { try { localStorage.removeItem(LOCAL_DRAFT + key); } catch (e) {} };
+const localAll = () => {
+  try { return Object.keys(localStorage).filter(k => k.startsWith(LOCAL_DRAFT)).map(k => JSON.parse(localStorage.getItem(k))).filter(Boolean); } catch (e) { return []; }
+};
+const newestDrafts = list => {
+  const best = {};
+  list.forEach(d => { if (!best[d.key] || Number(d.savedAt) > Number(best[d.key].savedAt)) best[d.key] = d; });
+  return Object.values(best).sort((a, b) => Number(b.savedAt) - Number(a.savedAt));
+};
+const fmtWhen = ms => { const d = new Date(Number(ms)); return d.getDate() + ' ' + MON[d.getMonth()] + ' ' + String(d.getHours()).padStart(2, '0') + '.' + String(d.getMinutes()).padStart(2, '0'); };
+
+// The editor is a separate bundle fetched on first use, so readers never download it.
+let editorLoad = null;
+const loadEditor = () => editorLoad || (editorLoad = (hasServer ? run('getEditorBundle') : fetch('EditorBundle.html').then(r => r.text())).then(src => {
+  // Apps Script's HTML parser alters raw JavaScript, so the bundle file holds it Base64-encoded (see editor-src/build.mjs).
+  const b64 = src.replace(/^[\s\S]*?<script[^>]*>/, '').replace(/<\/script>[\s\S]*$/, '').trim();
+  const code = new TextDecoder().decode(Uint8Array.from(atob(b64), c => c.charCodeAt(0)));
+  const script = document.createElement('script');
+  script.text = code;
+  document.head.appendChild(script);
+  // The sandbox may refuse an added script tag; running the code directly is the second way in.
+  if (!window.KBEditor) new Function(code)();
+  if (!window.KBEditor) throw new Error('Editor tidak terpasang');
+  return window.KBEditor;
+}).catch(err => { console.error('Editor:', err); editorLoad = null; throw err; }));
+
+const MOD = /Mac|iP(hone|ad)/.test(navigator.platform) ? '⌘' : 'Ctrl+';
+
+// The slash menu. Everything here maps to something the article format can already store.
+const SLASH = [
+  { id: 'p', group: 'Teks', label: 'Teks biasa', tile: 'T', keys: 'teks biasa paragraf normal text' },
+  { id: 'h1', group: 'Teks', label: 'Judul bagian', tile: 'H1', keys: 'judul bagian heading h1 section' },
+  { id: 'h2', group: 'Teks', label: 'Subjudul', tile: 'H2', keys: 'subjudul sub judul heading h2' },
+  { id: 'ol', group: 'Teks', label: 'Langkah bernomor', icon: 'listOl', keys: 'langkah bernomor nomor urut numbered list ol' },
+  { id: 'ul', group: 'Teks', label: 'Poin', icon: 'list', keys: 'poin bullet bulleted list ul' },
+  { id: 'table', group: 'Sisipkan', label: 'Tabel', icon: 'table', keys: 'tabel table' },
+  { id: 'link', group: 'Sisipkan', label: 'Tautan', icon: 'link', keys: 'tautan link url website' }
+];
+const TURN_INTO = SLASH.filter(x => x.group === 'Teks');
+const slashTile = x => x.icon ? I(x.icon, 15) : x.tile;
+// Makes the selected block or blocks this type. Lists cannot hold headings, so anything else leaves the list first.
+const setBlock = (chain, id, e) => {
+  if (id === 'p') chain.clearNodes();
+  else if (id === 'h1' || id === 'h2') chain.clearNodes().setHeading({ level: id === 'h1' ? 1 : 2 });
+  else if (id === 'ol' && !e.isActive('orderedList')) chain.toggleOrderedList();
+  else if (id === 'ul' && !e.isActive('bulletList')) chain.toggleBulletList();
+  return chain.run();
+};
+// The slash word being typed at the cursor, if any. It must start a line or follow a space, so a word pair like dan-atau written with a slash stays text.
+const slashAt = e => {
+  const { selection } = e.state, { $from, empty } = selection;
+  if (!empty || !$from.parent.isTextblock) return null;
+  const m = /(?:^|\s)\x2F([^\s\x2F]*)$/.exec($from.parent.textBetween(0, $from.parentOffset, '\n', '\n'));
+  return m ? { from: $from.pos - m[1].length - 1, to: $from.pos, q: m[1].toLowerCase() } : null;
+};
+// Phones and touch screens keep a fixed toolbar: selecting text and dragging are awkward there.
+const touchLayout = () => window.matchMedia('(hover: none), (max-width: 639px)').matches;
+
+// Write the article as it will look: slash menu for blocks, select text to format it. Saves as the plain body text (editor-src, convert.js).
+function BodyEditor({ value, onChange, onNotice }) {
+  const host = useRef(), stage = useRef(), ed = useRef(), latest = useRef(), linkInput = useRef(), keyHandler = useRef(() => false);
+  latest.current = { onChange, onNotice };
+  const [, tick] = useState(0);
+  const [state, setState] = useState('loading');
+  const [link, setLink] = useState(null);
+  const [attempt, setAttempt] = useState(0);
+  const [loadError, setLoadError] = useState('');
+  const [compact, setCompact] = useState(touchLayout);
+  const [active, setActive] = useState(0);
+  const [dismissed, setDismissed] = useState(null);
+  const [hover, setHover] = useState(null);
+  const [blockMenu, setBlockMenu] = useState(false);
+  const [styleOpen, setStyleOpen] = useState(false);
+  const [mouseDown, setMouseDown] = useState(false);
+  const openLink = () => { const e = ed.current; if (e) setLink(e.getAttributes('link').href || ''); };
+  useEffect(() => {
+    let gone = false;
+    setState('loading');
+    loadEditor().then(K => {
+      if (gone) return;
+      ed.current = K.create({ element: host.current, body: value,
+        onChange: b => { setHover(null); latest.current.onChange(b); }, onNotice: t => latest.current.onNotice(t), onState: () => tick(n => n + 1), onLinkKey: openLink,
+        onKeyDown: ev => keyHandler.current(ev) });
+      setState('ready');
+    }).catch(err => { if (!gone) { setLoadError(String((err && err.message) || err).slice(0, 160)); setState('failed'); } });
+    return () => { gone = true; if (ed.current) { ed.current.destroy(); ed.current = null; } };
+  }, [attempt]);
+  useEffect(() => { if (link !== null && linkInput.current) linkInput.current.focus(); }, [link === null]);
+  useEffect(() => {
+    const mq = window.matchMedia('(hover: none), (max-width: 639px)'), onMq = () => setCompact(mq.matches);
+    mq.addEventListener('change', onMq);
+    const onUp = () => setMouseDown(false);
+    window.addEventListener('mouseup', onUp);
+    return () => { mq.removeEventListener('change', onMq); window.removeEventListener('mouseup', onUp); };
+  }, []);
+  // Any click elsewhere closes the small menus.
+  useEffect(() => {
+    if (!blockMenu && !styleOpen) return;
+    const close = ev => { if (!ev.target.closest('.ed-pop, .ed-handle, .bb-style')) { setBlockMenu(false); setStyleOpen(false); } };
+    document.addEventListener('mousedown', close);
+    return () => document.removeEventListener('mousedown', close);
+  }, [blockMenu, styleOpen]);
+
+  const e = ed.current;
+  const slashRaw = e && e.isFocused ? slashAt(e) : null;
+  useEffect(() => { setActive(0); if (!slashRaw) setDismissed(null); }, [slashRaw && slashRaw.q, !slashRaw]);
+
+  if (state === 'failed') return html`
+    <div className="editor">
+      <div className="editor-fail"><span>Editor gagal dimuat. Anda tetap bisa menulis dengan format teks di bawah.${loadError ? ' (' + loadError + ')' : ''}</span><button type="button" className="text-btn" onClick=${() => setAttempt(n => n + 1)}>Coba lagi</button></div>
+      <textarea className="textarea" value=${value} aria-label="Isi artikel" onChange=${ev => onChange(ev.target.value)}></textarea>
+    </div>`;
+
+  const K = window.KBEditor;
+  const chain = () => e.chain().focus();
+  const on = (...x) => !!e && e.isActive(...x);
+  const can = fn => !!e && fn(e.can());
+  const inTable = on('table');
+  const sel = e ? e.state.selection : null;
+  const textSel = !!sel && !sel.empty && !sel.node && !sel.$anchorCell;
+  const base = stage.current ? stage.current.getBoundingClientRect() : null;
+  const hdr = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--hdr'), 10) || 65;
+
+  // ---- the slash menu
+  const slash = slashRaw && slashRaw.from !== dismissed ? slashRaw : null;
+  const slashItems = !slash ? [] : SLASH.filter(x => (!inTable || x.id === 'link') && (!slash.q || x.keys.split(' ').some(k => k.startsWith(slash.q))));
+  const slashIndex = Math.min(active, Math.max(0, slashItems.length - 1));
+  const applySlash = item => {
+    const c = chain().deleteRange({ from: slash.from, to: slash.to });
+    if (item.id === 'table') c.insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run();
+    else if (item.id === 'link') { c.run(); openLink(); }
+    else setBlock(c, item.id, e);
+  };
+  keyHandler.current = ev => {
+    if (!slash) return false;
+    if (ev.key === 'Escape') { setDismissed(slash.from); return true; }
+    if (!slashItems.length) return false;
+    if (ev.key === 'ArrowDown') { setActive((slashIndex + 1) % slashItems.length); return true; }
+    if (ev.key === 'ArrowUp') { setActive((slashIndex - 1 + slashItems.length) % slashItems.length); return true; }
+    if (ev.key === 'Enter' || ev.key === 'Tab') { applySlash(slashItems[slashIndex]); return true; }
+    return false;
+  };
+
+  // ---- text formatting
+  const Btn = (icon, label, keys, isOn, run_, enabled = true) => html`
+    <button key=${label} type="button" className=${'tb' + (isOn ? ' on' : '')} title=${label + (keys ? ' (' + keys + ')' : '')} aria-label=${label} aria-pressed=${isOn} disabled=${!e || !enabled}
+      onMouseDown=${ev => ev.preventDefault()} onClick=${run_}>${I(icon, 17)}</button>`;
+  const marks = () => [
+    Btn('highlight', 'Sorot', MOD + 'Shift+H', on('highlight'), () => chain().toggleHighlight().run()),
+    Btn('bold', 'Tebal', MOD + 'B', on('bold'), () => chain().toggleBold().run()),
+    Btn('italic', 'Miring', MOD + 'I', on('italic'), () => chain().toggleItalic().run()),
+    Btn('underline', 'Garis bawah', MOD + 'U', on('underline'), () => chain().toggleUnderline().run())
+  ];
+  const styleId = on('heading', { level: 1 }) ? 'h1' : on('heading', { level: 2 }) ? 'h2' : on('orderedList') ? 'ol' : on('bulletList') ? 'ul' : 'p';
+  const applyLink = () => {
+    const raw = (link || '').trim();
+    if (!raw) { chain().extendMarkRange('link').unsetLink().run(); setLink(null); return; }
+    // No slash characters in these patterns: the Apps Script comment stripper can misread them and break the whole app.
+    const href = /^https?:\x2F\x2F/i.test(raw) ? raw : 'https://' + raw.replace(/^\x2F+/, '');
+    if (e.state.selection.empty && !e.isActive('link')) chain().insertContent({ type: 'text', text: raw, marks: [{ type: 'link', attrs: { href } }] }).run();
+    else chain().extendMarkRange('link').setLink({ href }).run();
+    setLink(null);
+  };
+  const linkForm = html`
+    <form className="ed-link" onSubmit=${ev => { ev.preventDefault(); applyLink(); }}>
+      <input ref=${linkInput} className="input sm" value=${link || ''} placeholder="Tempel alamat tautan" aria-label="Alamat tautan"
+        onChange=${ev => setLink(ev.target.value)} onKeyDown=${ev => { if (ev.key === 'Escape') { ev.stopPropagation(); setLink(null); chain().run(); } }} />
+      <button type="submit" className="tb-text strong">Terapkan</button>
+      ${on('link') && html`<button type="button" className="tb-text danger" onClick=${() => { chain().extendMarkRange('link').unsetLink().run(); setLink(null); }}>Hapus</button>`}
+      <button type="button" className="tb-text" onClick=${() => { setLink(null); chain().run(); }}>Batal</button>
+    </form>`;
+  const TableBtn = (label, run_, danger) => html`<button key=${label} type="button" className=${'tb-text' + (danger ? ' danger' : '')} onMouseDown=${ev => ev.preventDefault()} onClick=${run_}>${label}</button>`;
+  const tableBtns = () => [
+    TableBtn('+ Baris', () => chain().addRowAfter().run()),
+    TableBtn('+ Kolom', () => chain().addColumnAfter().run()),
+    TableBtn('Hapus baris', () => chain().deleteRow().run()),
+    TableBtn('Hapus kolom', () => chain().deleteColumn().run()),
+    TableBtn('Hapus tabel', () => chain().deleteTable().run(), true)
+  ];
+
+  // ---- floating pieces, placed relative to the writing area so they scroll with it
+  let slashPos = null, bubblePos = null, tablePos = null;
+  if (e && base) {
+    try {
+      if (slash) {
+        const c = e.view.coordsAtPos(slash.from), below = c.bottom + 340 < window.innerHeight;
+        slashPos = { left: Math.max(8, Math.min(c.left - base.left, base.width - 288)), ...(below ? { top: c.bottom - base.top + 6 } : { bottom: base.bottom - c.top + 6 }) };
+      }
+      if (!compact && (link !== null || (textSel && e.isFocused && !mouseDown))) {
+        const a = e.view.coordsAtPos(sel.from), b = e.view.coordsAtPos(sel.to);
+        const mid_ = a.top === b.top ? (a.left + b.left) / 2 : a.left + 120;
+        bubblePos = { left: Math.max(8, Math.min(mid_ - base.left - 170, base.width - 440)), top: a.top - 50 < hdr ? b.bottom - base.top + 8 : a.top - base.top - 50 };
+      }
+      if (!compact && inTable && !bubblePos && e.isFocused) {
+        const node = e.view.domAtPos(sel.from).node, cell = node.nodeType === 1 ? node : node.parentElement, table = cell.closest('table');
+        if (table) { const r = table.getBoundingClientRect(); tablePos = { left: r.left - base.left, top: r.top - base.top - 44 }; }
+      }
+    } catch (err) {}
+  }
+
+  // ---- the hover handle
+  const onStageMove = ev => {
+    if (!e || compact || blockMenu || ev.target.closest('.ed-pop')) return;
+    const pm = host.current && host.current.querySelector('.pm');
+    if (!pm || !stage.current) return;
+    // Measured now, not at the last render, because the page may have scrolled since.
+    const now = stage.current.getBoundingClientRect();
+    const el = [...pm.children].find(c => { const r = c.getBoundingClientRect(); return ev.clientY >= r.top - 8 && ev.clientY <= r.bottom + 8; });
+    if (!el) { if (hover) setHover(null); return; }
+    let pos;
+    try { pos = K.blocks.posOf(e, el); } catch (err) { return; }
+    const top = el.getBoundingClientRect().top - now.top;
+    if (!hover || hover.pos !== pos || hover.top !== top) setHover({ pos, top, el });
+  };
+  const hoverNode = e && hover && hover.pos <= e.state.doc.content.size ? e.state.doc.nodeAt(hover.pos) : null;
+
+  return html`
+    <div className=${'editor' + (compact ? '' : ' free')}>
+      ${compact && html`
+        <div className="ed-bars">
+          <div className="ed-bar" role="toolbar" aria-label="Format isi artikel">
+            ${Btn('undo', 'Urungkan', '', false, () => chain().undo().run(), can(c => c.undo()))}
+            ${Btn('redo', 'Ulangi', '', false, () => chain().redo().run(), can(c => c.redo()))}
+            <span className="tb-sep"></span>
+            <select className="tb-style" aria-label="Gaya teks" value=${styleId} disabled=${!e || inTable} onChange=${ev => setBlock(chain(), ev.target.value, e)}>
+              ${TURN_INTO.map(x => html`<option key=${x.id} value=${x.id}>${x.label}</option>`)}
+            </select>
+            <span className="tb-sep"></span>
+            ${marks()}
+            ${Btn('link', 'Tautan', '', on('link') || link !== null, () => link !== null ? setLink(null) : openLink())}
+            ${Btn('table', 'Sisipkan tabel', '', inTable, () => chain().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run(), !inTable)}
+          </div>
+          ${link !== null && html`<div className="ed-sub">${linkForm}</div>`}
+          ${inTable && html`<div className="ed-sub" role="toolbar" aria-label="Ubah tabel"><span className="ed-sub-l">Tabel</span>${tableBtns()}</div>`}
+        </div>`}
+      <div ref=${stage} className="ed-stage" onMouseMove=${onStageMove} onMouseDown=${() => setMouseDown(true)} onMouseLeave=${() => { if (!blockMenu && hover) setHover(null); }}>
+        ${state === 'loading' && html`<div className="ed-loading" role="status"><span className="dot"></span>Menyiapkan editor…</div>`}
+        <div ref=${host} className="ed-host" style=${{ display: state === 'loading' ? 'none' : undefined }}></div>
+
+        ${hoverNode && html`
+          <div className="ed-handle" style=${{ top: hover.top }}>
+            <button type="button" className="eh-btn" title="Tambah baris di bawah" aria-label="Tambah baris di bawah"
+              onMouseDown=${ev => { ev.preventDefault(); ev.stopPropagation(); }} onClick=${() => { K.blocks.addBelow(e, hover.pos); setHover(null); }}>${I('plus', 15)}</button>
+            <button type="button" className="eh-btn grip" draggable="true" title="Seret untuk memindahkan, klik untuk menu" aria-label="Menu blok" aria-expanded=${blockMenu}
+              onMouseDown=${ev => ev.stopPropagation()} onClick=${() => setBlockMenu(o => !o)}
+              onDragStart=${ev => { setBlockMenu(false); K.blocks.startDrag(e, hover.pos, ev.nativeEvent, hover.el); }} onDragEnd=${() => setHover(null)}>
+              <svg width="10" height="16" viewBox="0 0 10 16" fill="currentColor" aria-hidden="true"><circle cx="2" cy="2" r="1.5"/><circle cx="8" cy="2" r="1.5"/><circle cx="2" cy="8" r="1.5"/><circle cx="8" cy="8" r="1.5"/><circle cx="2" cy="14" r="1.5"/><circle cx="8" cy="14" r="1.5"/></svg>
+            </button>
+            ${blockMenu && html`
+              <div className="ed-pop block-menu" role="menu">
+                ${hoverNode.type.name !== 'table' && html`
+                  <span className="sl-group">Ubah menjadi</span>
+                  ${TURN_INTO.map(x => html`<button key=${x.id} type="button" className="sl-row" role="menuitem" onMouseDown=${ev => ev.preventDefault()}
+                    onClick=${() => { K.blocks.select(e, hover.pos); setBlock(chain(), x.id, e); e.commands.setTextSelection(hover.pos + 1); setBlockMenu(false); setHover(null); }}>
+                    <span className="sl-tile">${slashTile(x)}</span><span>${x.label}</span></button>`)}
+                  <span className="sl-line"></span>`}
+                <button type="button" className="sl-row" role="menuitem" onMouseDown=${ev => ev.preventDefault()} onClick=${() => { K.blocks.duplicate(e, hover.pos); setBlockMenu(false); setHover(null); }}><span>Duplikat</span></button>
+                <button type="button" className="sl-row danger" role="menuitem" onMouseDown=${ev => ev.preventDefault()} onClick=${() => { K.blocks.remove(e, hover.pos); setBlockMenu(false); setHover(null); }}><span>Hapus</span></button>
+              </div>`}
+          </div>`}
+
+        ${slashPos && html`
+          <div className="ed-pop slash" style=${slashPos} role="listbox" aria-label="Sisipkan">
+            ${slashItems.length ? slashItems.map((x, i) => html`
+              ${(i === 0 || slashItems[i - 1].group !== x.group) && html`<span key=${'g' + x.group} className="sl-group">${x.group}</span>`}
+              <button key=${x.id} type="button" className=${'sl-row' + (i === slashIndex ? ' on' : '')} role="option" aria-selected=${i === slashIndex}
+                onMouseDown=${ev => ev.preventDefault()} onMouseEnter=${() => setActive(i)} onClick=${() => applySlash(x)}>
+                <span className="sl-tile">${slashTile(x)}</span><span>${x.label}</span>
+              </button>`) : html`<span className="sl-none">Tidak ada hasil</span>`}
+          </div>`}
+
+        ${bubblePos && html`
+          <div className="ed-pop bubble" style=${bubblePos} role="toolbar" aria-label="Format teks" onMouseDown=${ev => { if (ev.target.tagName !== 'INPUT') ev.preventDefault(); ev.stopPropagation(); }}>
+            ${link !== null ? linkForm : html`
+              <div className="bb-style">
+                <button type="button" className="tb-text" disabled=${inTable} aria-expanded=${styleOpen} onClick=${() => setStyleOpen(o => !o)}>
+                  ${TURN_INTO.find(x => x.id === styleId).label}${I('chevD', 14)}
+                </button>
+                ${styleOpen && html`
+                  <div className="ed-pop style-menu" role="menu">
+                    ${TURN_INTO.map(x => html`<button key=${x.id} type="button" className=${'sl-row' + (x.id === styleId ? ' on' : '')} role="menuitem" onClick=${() => { setBlock(chain(), x.id, e); setStyleOpen(false); }}>
+                      <span className="sl-tile">${slashTile(x)}</span><span>${x.label}</span></button>`)}
+                  </div>`}
+              </div>
+              <span className="tb-sep"></span>
+              ${marks()}
+              <span className="tb-sep"></span>
+              ${Btn('link', 'Tautan', MOD + 'K', on('link'), openLink)}
+              ${Btn('eraser', 'Hapus format', '', false, () => chain().unsetAllMarks().run())}`}
+          </div>`}
+
+        ${tablePos && html`
+          <div className="ed-pop table-bar" style=${tablePos} role="toolbar" aria-label="Ubah tabel" onMouseDown=${ev => { ev.preventDefault(); ev.stopPropagation(); }}>${tableBtns()}</div>`}
+      </div>
+    </div>`;
+}
+
 const KW_SUGGEST = ['inbound', 'supplier', 'PO', 'karantina', 'defect', 'expired date', 'FEFO', 'putaway'];
 const DRAWER_W = 480, DRAWER_MIN = 380;
 const drawerMax = () => Math.min(960, window.innerWidth - 80);
@@ -177,7 +507,7 @@ const saveW = w => { try { localStorage.setItem('kb-drawer-w', String(w)); } cat
 
 function App() {
   const [s, setS] = useState({
-    step: 'home', homeView: 'search', type: 'sop', dept: null, docId: null, active: 's0', activeSub: null, tocOpen: {}, anim: true,
+    step: 'home', homeView: 'search', type: 'sop', dept: null, docId: null, active: 's0', activeSub: null, tocOpen: {}, tocSheet: false, docQs: {}, votes: {}, drafts: [], autosave: null, confirmDiscard: false, anim: true,
     q: '', sq: '', focus: null, homeQ: null, homeAns: null, homeTyping: false, homeTab: 'mancu', browseQ: '',
     chatOpen: false, msgs: [], typing: false, think: null, draft: '', toast: null, w: NEW_WRITER(), saving: false
   });
@@ -185,9 +515,17 @@ function App() {
   const [docs, setDocs] = useState(null);
   const [prompts, setPrompts] = useState([]);
   const [vw, setVw] = useState(window.innerWidth);
+  // On a small phone Google's banner stretches the page past the screen, cutting off the right edge. Keep the app inside what is visible.
+  // Closing the banner resizes the page, which clears this. The limits skip landscape iPhones, whose screen.width stays the portrait width.
+  const fitScreen = () => {
+    const over = window.innerWidth - screen.width;
+    const edge = window.innerWidth < 640 && over > 0 && over <= 80 ? over : 0;
+    document.documentElement.style.setProperty('--edge', edge + 'px');
+    setVw(window.innerWidth - edge);
+  };
   const [drawerW, setDrawerW] = useState(() => { try { return Number(localStorage.getItem('kb-drawer-w')) || DRAWER_W; } catch (e) { return DRAWER_W; } });
   const [dragging, setDragging] = useState(false);
-  const hdrRef = useRef(), heroRef = useRef(), browseRef = useRef(), headRef = useRef(), bodyRef = useRef(), bodyInputRef = useRef();
+  const hdrRef = useRef(), heroRef = useRef(), browseRef = useRef(), headRef = useRef(), bodyRef = useRef();
   const timers = useRef({}), askSeq = useRef(0);
   const sRef = useRef(s); sRef.current = s;
   const lib = docs || [];
@@ -201,17 +539,36 @@ function App() {
     requestAnimationFrame(() => requestAnimationFrame(() => { set({ anim: true }); if (after) after(); }));
   };
   const hdrH = () => (hdrRef.current ? hdrRef.current.offsetHeight : 65);
-  const scrollToSec = id => { const el = document.getElementById('sec-' + id); if (el) window.scrollTo({ top: el.getBoundingClientRect().top + window.scrollY - hdrH() - 75 }); set({ active: id }); };
-  const scrollToEl = id => { const el = document.getElementById(id); if (el) window.scrollTo({ top: el.getBoundingClientRect().top + window.scrollY - hdrH() - 45 }); set({ activeSub: id }); };
-  const openDoc = (d, sec) => {
+  const scrollToSec = id => { const el = document.getElementById('sec-' + id); if (el) window.scrollTo({ top: el.getBoundingClientRect().top + window.scrollY - hdrH() - 75 }); set({ active: id, tocSheet: false }); };
+  const scrollToEl = id => { const el = document.getElementById(id); if (el) window.scrollTo({ top: el.getBoundingClientRect().top + window.scrollY - hdrH() - 45 }); set({ activeSub: id, tocSheet: false }); };
+  // From a search result: the line with the most searched words, highlighted for a moment.
+  const jumpToLine = (secId, ws) => {
+    const root = document.getElementById('sec-' + secId);
+    if (!root) return;
+    const score = el => ws.filter(w => el.textContent.toLowerCase().includes(w)).length;
+    const best = [...root.querySelectorAll('li, p, tr, h3')].reduce((b, el) => score(el) > (b ? score(b) : 0) ? el : b, null);
+    if (!best) return scrollToSec(secId);
+    window.scrollTo({ top: best.getBoundingClientRect().top + window.scrollY - hdrH() - 90 });
+    set({ active: secId });
+    best.classList.add('hit');
+    setTimeout(() => best.classList.remove('hit'), 2400);
+  };
+  const openDoc = (d, sec, ws) => {
     if (!d) return;
     const cur = sRef.current;
     const dept = d.areas.includes(cur.dept) ? cur.dept : d.areas[0] || null;
-    go({ step: 'reader', docId: d.id, type: d.type, dept, active: 's0', activeSub: null, tocOpen: {}, q: '' }, sec ? () => setTimeout(() => scrollToSec(sec), 320) : null);
+    go({ step: 'reader', docId: d.id, type: d.type, dept, active: 's0', activeSub: null, tocOpen: {}, tocSheet: false, q: '' }, sec ? () => setTimeout(() => ws && ws.length ? jumpToLine(sec, ws) : scrollToSec(sec), 60) : null);
     if (hasServer) google.script.history.replace(null, { doc: d.id });
   };
   const goHome = () => { go({ step: 'home', homeView: 'search', docId: null, q: '', homeQ: null, homeAns: null, homeTyping: false }); if (hasServer) google.script.history.replace(null, {}); };
-  const goBrowse = () => go({ step: 'home', homeView: 'browse', docId: null });
+  // The browse page lists every document by area; arriving from a document lands on that document's area.
+  const goBrowse = (type, area) => {
+    go({ step: 'home', homeView: 'browse', docId: null, ...(type ? { type } : {}) }, area ? () => {
+      const el = document.getElementById('area-' + area);
+      if (el) window.scrollTo({ top: el.getBoundingClientRect().top + window.scrollY - hdrH() - 16 });
+    } : null);
+    if (hasServer) google.script.history.replace(null, {});
+  };
   const flash = t => { clearTimeout(timers.current.toast); set({ toast: t }); timers.current.toast = setTimeout(() => set({ toast: null }), 2200); };
 
   // ---- Mancu: Gemini on the server, local document search when no key is set
@@ -222,7 +579,7 @@ function App() {
   const thinkFor = (text, docId) => {
     const pool = docId ? docsRef.current.filter(d => d.id === docId) : docsRef.current.filter(d => d.versions.length);
     const secs = kwSearch(text, pool).filter(h => h.s).slice(0, 3).map(h => h.s.title);
-    return { ctx: docId || '', label: docId && pool[0] ? pool[0].title : pool.length + ' dokumen', secs, phase: 0 };
+    return { ctx: docId || '', label: docId && pool[0] ? (pool[0].short || pool[0].title) : pool.length + ' dokumen', secs, phase: 0 };
   };
   // Reading steps advance on a timer while Gemini works; the answer replaces them whenever it arrives.
   const startThink = () => {
@@ -255,7 +612,7 @@ function App() {
     const seq = ++askSeq.current, ctx = ctxDocId();
     set(p => ({ chatOpen: true, typing: true, think: thinkFor(text, ctx), draft: '', msgs: [...p.msgs, { user: true, text }] }));
     startThink();
-    answer(text, ctx).then(a => { if (seq !== askSeq.current) return; stopThink(); set(p => ({ typing: false, think: null, msgs: [...p.msgs, aiMsg(a)] })); });
+    answer(text, ctx).then(a => { if (seq !== askSeq.current) return; stopThink(); set(p => ({ typing: false, think: null, msgs: [...p.msgs, { ...aiMsg(a), q: text, ctx }] })); });
   };
   const askHome = text => {
     text = (text || '').trim();
@@ -263,13 +620,14 @@ function App() {
     const seq = ++askSeq.current;
     set({ q: text, homeQ: text, homeAns: null, homeTyping: true, homeTab: 'mancu', think: thinkFor(text, '') });
     startThink();
-    answer(text).then(a => { if (seq !== askSeq.current) return; stopThink(); set({ homeTyping: false, think: null, homeAns: aiMsg(a) }); });
+    answer(text).then(a => { if (seq !== askSeq.current) return; stopThink(); set({ homeTyping: false, think: null, homeAns: { ...aiMsg(a), q: text, ctx: '' } }); });
   };
   const openSource = src => { set({ chatOpen: false }); openDoc(findDoc(src.docId), src.sec); };
 
   // ---- effects
   useEffect(() => {
-    const onR = () => setVw(window.innerWidth);
+    const onR = fitScreen;
+    fitScreen();
     const onK = e => {
       const tag = e.target.tagName, cur = sRef.current;
       if (e.key === '/' && tag !== 'INPUT' && tag !== 'TEXTAREA') {
@@ -277,6 +635,7 @@ function App() {
         if (r.current) { e.preventDefault(); r.current.focus(); }
       } else if (e.key === 'Escape') {
         if (tag === 'INPUT' || tag === 'TEXTAREA') e.target.blur();
+        else if (cur.tocSheet) set({ tocSheet: false });
         else if (cur.chatOpen) set({ chatOpen: false });
       }
     };
@@ -340,9 +699,25 @@ function App() {
     if ((s.chatOpen || s.step === 'reader') && !timers.current.warm) { timers.current.warm = true; run('warmMancu').catch(() => {}); }
   }, [s.chatOpen, s.step]);
 
+  // Suggested questions for the open document come from Gemini (cached on the server); section names stand in if it is slow or fails.
+  useEffect(() => {
+    if (s.step !== 'reader' || !s.docId || !docs) return;
+    const asked = timers.current.docQs || (timers.current.docQs = {}), id = s.docId;
+    if (asked[id]) return;
+    asked[id] = true;
+    const d = findDoc(id);
+    if (!d || !d.versions.length) return;
+    let settled = false;
+    const give = list => { if (!settled) { settled = true; set(p => ({ docQs: { ...p.docQs, [id]: list } })); } };
+    const fromSections = () => parseBody(d.versions[0].body, d.title).map(x => tocLabel(x.title).replace(/^[A-Z0-9]+[.)]\s+/, ''))
+      .filter(t => t !== d.title && !/^ketentuan umum$/i.test(t)).slice(0, 3).map(t => 'Apa yang diatur di bagian ' + t + '?');
+    setTimeout(() => give(fromSections()), 6000);
+    run('suggestQuestions', id).then(q => give(q && q.length ? q : fromSections()), () => give(fromSections()));
+  }, [s.step, s.docId, docs]);
+
   // ---- layout flags
   const xwide = vw >= 1200, wide = vw >= 1024, mid = vw >= 640;
-  const showHeaderSearch = s.step === 'list' || s.step === 'reader' || s.step === 'search';
+  const showHeaderSearch = s.step === 'reader' || s.step === 'search';
   const isWriter = s.step === 'writer';
   const loading = docs === null;
   const typingEl = html`<div className="typing"><span className="dot"></span>Mancu sedang membaca SOP…</div>`;
@@ -356,16 +731,33 @@ function App() {
         </div>`)}
     </div>`;
 
+  // 👍/👎 under an answer, saved to the "Masukan Mancu" sheet.
+  const voteBar = m => {
+    if (!m.q || m.error) return null;
+    const key = (m.ctx || '') + '|' + m.q, voted = s.votes[key];
+    const vote = v => {
+      set(p => ({ votes: { ...p.votes, [key]: v } }));
+      run('rateAnswer', m.q, m.ctx || '', [m.intro, ...m.items].join(' · '), v).catch(() => {});
+    };
+    return html`
+      <div className="votes">
+        ${voted ? html`<span>Terima kasih atas masukannya.</span>` : html`
+          <span>Jawaban ini membantu?</span>
+          <button className="vote" title="Membantu" aria-label="Membantu" onClick=${() => vote('up')}>${I('thumbUp', 15)}</button>
+          <button className="vote" title="Kurang membantu" aria-label="Kurang membantu" onClick=${() => vote('down')}>${I('thumbDown', 15)}</button>`}
+      </div>`;
+  };
+
   // ================================================================= header
   // Keyword search over sections (then whole documents) for the results page.
   const keywordHits = q => {
-    const seen = {}, out = [];
+    const seen = {}, out = [], ws = words(q);
     kwSearch(q, lib).forEach(h => {
       const key = h.d.id + (h.s ? '#' + h.s.id : '');
       if (seen[key] || (!h.s && out.some(o => o.d.id === h.d.id))) return;
       seen[key] = true;
       out.push({ key, d: h.d, sec: h.s ? h.s.id : null, title: h.s && h.s.title !== h.d.title ? h.s.title : h.d.title,
-        sub: h.d.code + ' · ' + h.d.title, text: h.s ? excerpt(h.s, words(q)) : applies(h.d) });
+        sub: h.d.code + ' · ' + h.d.title, text: h.s ? excerpt(h.s, ws) : applies(h.d) });
     });
     return out;
   };
@@ -383,13 +775,10 @@ function App() {
           <div className="hdr-mid">
             <div className=${'hsearch' + (s.focus === 'head' ? ' focus' : '')}>
               ${I('search')}
-              <input ref=${headRef} value=${s.q} placeholder="Cari kata kunci di semua SOP…" aria-label="Cari kata kunci di semua SOP"
+              <input ref=${headRef} value=${s.q} placeholder=${wide ? 'Cari kata kunci di semua SOP…' : 'Cari di semua SOP…'} aria-label="Cari kata kunci di semua SOP"
                 onChange=${e => set({ q: e.target.value })} onFocus=${() => set({ focus: 'head' })}
                 onBlur=${() => set(p => p.focus === 'head' ? { focus: null } : {})}
                 onKeyDown=${e => { if (e.key === 'Enter' && s.q.trim()) { e.preventDefault(); goSearch(s.q); } }} />
-              <button className="btn-ask" onMouseDown=${e => { e.preventDefault(); if (s.q.trim()) goSearch(s.q); else set({ chatOpen: true }); }}>
-                <span className="orange">${I('sparkles', 18)}</span>${mid && html`<span>Tanya Mancu</span>`}
-              </button>
             </div>
           </div>`}
         <div className="hdr-right">
@@ -402,8 +791,9 @@ function App() {
     </header>`;
 
   // ================================================================= home
+  const homeWs = s.homeQ ? words(s.homeQ) : [];
   const kwRes = s.homeQ ? kwSearch(s.homeQ, lib).map(r => r.s
-    ? { key: r.d.id + r.s.id, title: r.s.title, meta: r.d.code + ' · ' + r.d.title + ' · Rev ' + revLabel(r.d), open: () => openDoc(r.d, r.s.id) }
+    ? { key: r.d.id + r.s.id, title: r.s.title, meta: r.d.code + ' · ' + r.d.title + ' · Rev ' + revLabel(r.d), open: () => openDoc(r.d, r.s.id, homeWs) }
     : { key: r.d.id, title: r.d.title, meta: r.d.code + ' · ' + applies(r.d) + ' · Rev ' + revLabel(r.d), open: () => openDoc(r.d) }) : [];
   const ans = s.homeAns;
 
@@ -447,14 +837,15 @@ function App() {
                     <span className="eyebrow">Sumber</span>
                     ${ans.sources.map(src => html`<button key=${src.label} className="src-link" onClick=${() => openSource(src)}><span>${src.label}</span>${I('arrowR', 16)}</button>`)}
                   </div>`}
+                ${voteBar(ans)}
                 <div className="ans-foot">
                   <button className="link-strong" onClick=${() => set({ chatOpen: true, msgs: [{ user: true, text: s.homeQ }, ans] })}><span>Lanjutkan di chat</span>${I('arrowR', 16)}</button>
                   <span className="disclaimer">Mancu bisa salah. Cek kembali di SOP yang dikutip.</span>
                 </div>`}
             </div>`}
           ${s.homeTab === 'kw' && html`
-            <div className="hl-list" style=${{ paddingTop: 8 }}>
-              ${kwRes.map(r => html`<button key=${r.key} className="hl-row" onClick=${r.open}><b>${r.title}</b><span>${r.meta}</span></button>`)}
+            <div className="rows" style=${{ marginTop: 16 }}>
+              ${kwRes.map(r => html`<${Row} key=${r.key} title=${markWords(r.title, homeWs)} meta=${r.meta} onClick=${r.open} />`)}
               ${!loading && !kwRes.length && html`<span className="empty">Tidak ada dokumen dengan kata kunci ini.</span>`}
             </div>`}
         </div>`}
@@ -473,20 +864,24 @@ function App() {
         ${bq && html`<button className="icon-btn" title="Hapus" aria-label="Hapus" onClick=${() => set({ browseQ: '' })}>${I('x', 18)}</button>`}
       </div>
       ${bq ? html`
-        <div className="hl-list">
-          <span style=${{ fontSize: 13, color: 'var(--muted)', paddingBottom: 4 }}>${browseHits.length ? browseHits.length + ' dokumen' : 'Tidak ada dokumen yang cocok.'}</span>
-          ${browseHits.map(d => html`<button key=${d.id} className="hl-row" onClick=${() => openDoc(d)}><b>${d.title}</b><span>${d.code} · ${typeOf(d.type).short} · ${applies(d)} · Rev ${revLabel(d)}</span></button>`)}
+        <div style=${{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <span style=${{ fontSize: 13, color: 'var(--muted)' }}>${browseHits.length ? browseHits.length + ' dokumen' : 'Tidak ada dokumen yang cocok.'}</span>
+          ${browseHits.length > 0 && html`<div className="rows">${browseHits.map(d => html`<${Row} key=${d.id} title=${d.title} meta=${d.code + ' · ' + typeOf(d.type).short + ' · ' + applies(d) + ' · Rev ' + revLabel(d)} onClick=${() => openDoc(d)} />`)}</div>`}
         </div>` : html`
         <div style=${{ display: 'flex', flexDirection: 'column', gap: 18 }}>
           <div className="pills">
             ${TYPES.map(t => html`<button key=${t.id} className=${'pill' + (s.type === t.id ? ' on' : '')} onClick=${() => set({ type: t.id })}><span>${t.short}</span><span className="n">${loading ? '–' : countFor(t.id)}</span></button>`)}
           </div>
           <p style=${{ fontSize: 15, color: 'var(--sec2)' }}>${typeOf(s.type).desc}</p>
-          <div className="area-list">
-            ${DEPTS.map(d => { const c = countFor(s.type, d.id); return html`
-              <button key=${d.id} className="area-row" disabled=${!c} onClick=${() => go({ step: 'list', dept: d.id })}>
-                <b>${d.label}</b><span>${loading ? 'Memuat…' : c ? c + ' dokumen' : 'Belum ada dokumen'}</span><i>${I('chevR', 18)}</i>
-              </button>`; })}
+          <div className="area-groups">
+            ${DEPTS.map(d => { const inArea = lib.filter(x => x.type === s.type && x.areas.includes(d.id)); return html`
+              <section key=${d.id} id=${'area-' + d.id} className="area-group">
+                <h2>${d.label}</h2>
+                <div className="rows">
+                  ${inArea.map(x => { const v = x.versions[0]; return html`<${Row} key=${x.id} title=${docTitle(x)} meta=${x.code + ' · Rev ' + revLabel(x) + ' · Berlaku ' + (v ? fmtDate(v.effectiveDate) : '–')} onClick=${() => openDoc(x)} />`; })}
+                  ${!inArea.length && html`<span className="area-empty">${loading ? 'Memuat…' : 'Belum ada dokumen'}</span>`}
+                </div>
+              </section>`; })}
           </div>
         </div>`}
     </div>`;
@@ -500,35 +895,9 @@ function App() {
       ${s.homeView === 'search' ? homeSearch : homeBrowse}
     </div>`;
 
-  // ================================================================= list
-  const typeObj = typeOf(s.type), deptObj = deptOf(s.dept);
-  const listDocs = lib.filter(d => d.type === s.type && d.areas.includes(s.dept));
-  const list = html`
-    <div style=${{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-      <nav className="crumbs" aria-label="Breadcrumb">
-        <button className="crumb" onClick=${goHome}>${I('home', 16)}<span>Beranda</span></button><span className="sep">›</span>
-        <button className="crumb" onClick=${goBrowse}>${typeObj.short}</button><span className="sep">›</span>
-        <span className="crumb-pill">${deptObj ? deptObj.short : '–'}</span>
-      </nav>
-      <div className="list-head">
-        <div style=${{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-          <span className="eyebrow lg">${typeObj.long}</span>
-          <h1>${deptObj ? deptObj.label : '–'}</h1>
-        </div>
-        <span style=${{ fontSize: 14, color: 'var(--sec2)' }}>${listDocs.length} dokumen</span>
-      </div>
-      <div className="doc-rows">
-        ${listDocs.map(d => { const v = d.versions[0]; return html`
-          <button key=${d.id} className="doc-row" onClick=${() => openDoc(d)}>
-            <span className="tile">${I('file')}</span>
-            <span className="t"><b>${docTitle(d)}</b><span className="meta"><span className="code">${d.code}</span><span>Rev ${revLabel(d)} · Berlaku ${v ? fmtDate(v.effectiveDate) : '–'}${d.pages ? ' · ' + d.pages + ' halaman' : ''}</span></span></span>
-            <i>${I('chevR', 18)}</i>
-          </button>`; })}
-      </div>
-    </div>`;
-
   // ================================================================= search results
   const sHits = s.step === 'search' ? keywordHits(s.sq) : [];
+  const sWs = s.step === 'search' ? words(s.sq) : [];
   const searchPage = html`
     <div className="results">
       <nav className="crumbs" aria-label="Breadcrumb">
@@ -542,13 +911,8 @@ function App() {
         </div>
         <span style=${{ fontSize: 14, color: 'var(--sec2)' }}>${loading ? 'Memuat…' : sHits.length + ' bagian'}</span>
       </div>
-      <div className="res-list">
-        ${sHits.map(h => html`
-          <button key=${h.key} className="res-row" onClick=${() => openDoc(h.d, h.sec)}>
-            <span className="tile">${I('file', 18)}</span>
-            <span className="t"><b>${h.title}</b><span className="meta">${h.sub}</span>${h.text && html`<span className="ex">${h.text}</span>`}</span>
-            <i>${I('chevR', 18)}</i>
-          </button>`)}
+      <div className="rows">
+        ${sHits.map(h => html`<${Row} key=${h.key} title=${markWords(h.title, sWs)} meta=${h.sub} text=${h.text && markWords(h.text, sWs)} onClick=${() => openDoc(h.d, h.sec, sWs)} />`)}
         ${!loading && !sHits.length && html`<p className="empty">Tidak ada bagian dokumen yang cocok dengan kata kunci ini.</p>`}
       </div>
       <div className="res-ask">
@@ -567,7 +931,7 @@ function App() {
       case 'bullets': return html`<ul className="bullets">${b.items.map((t, i) => html`<li key=${i}><span>•</span><span>${rich(t)}</span></li>`)}</ul>`;
       case 'table': return html`
         <div className="tbl"><div className="tbl-scroll"><table>
-          <thead><tr>${b.head.map((h, i) => html`<th key=${i}>${h}</th>`)}</tr></thead>
+          <thead><tr>${b.head.map((h, i) => html`<th key=${i}>${rich(h)}</th>`)}</tr></thead>
           <tbody>${b.rows.map((r, i) => html`<tr key=${i}>${r.map((c, j) => html`<td key=${j} style=${{ whiteSpace: c.length < 16 ? 'nowrap' : 'normal' }}>${rich(c)}</td>`)}</tr>`)}</tbody>
         </table></div></div>`;
     }
@@ -581,9 +945,10 @@ function App() {
     const vers = doc.versions, viewV = readerVer;
     const secs = readerSecs;
     const showToc = secs.length > 0;
-    const toc = [...secs.map(x => ({ id: x.id, label: x.title, on: x.id === s.active,
-      subs: x.blocks.filter(b => b.kind === 'h').map(b => ({ aid: b.aid, label: b.text.replace(/\*\*/g, '') })) })),
-      ...(vers.length ? [{ id: 'log', label: 'Riwayat perubahan', on: s.active === 'log', subs: [] }] : [])];
+    const toc = [...secs.map(x => ({ id: x.id, label: tocLabel(x.title), full: x.title, on: x.id === s.active,
+      subs: x.blocks.filter(b => b.kind === 'h').map(b => ({ aid: b.aid, label: tocLabel(b.text) })) })),
+      ...(vers.length ? [{ id: 'log', label: 'Riwayat perubahan', full: 'Riwayat perubahan', on: s.active === 'log', subs: [] }] : [])];
+    const curToc = toc.find(t => t.on);
     const signoff = parseSignoff(doc.signoff);
     const cols = showToc && wide ? (xwide ? '264px minmax(0, 1fr)' : '236px minmax(0, 1fr)') : 'minmax(0, 1fr)';
     // A section with sub-headings opens while it is being read; its chevron opens or closes it by hand.
@@ -591,7 +956,7 @@ function App() {
       const open = t.subs.length > 0 && (s.tocOpen[t.id] !== undefined ? s.tocOpen[t.id] : t.on);
       return html`
         <div key=${t.id} className="toc-item">
-          <button className=${'toc-row' + (t.on && !(open && s.activeSub) ? ' on' : '')} aria-expanded=${t.subs.length ? open : undefined}
+          <button className=${'toc-row' + (t.on && !(open && s.activeSub) ? ' on' : '')} title=${t.full !== t.label ? t.full : undefined} aria-expanded=${t.subs.length ? open : undefined}
             onClick=${() => {
               // A section with sub-headings only opens or closes its list; its sub-headings jump to the text.
               if (t.subs.length) set(p => ({ tocOpen: { ...p.tocOpen, [t.id]: !open } }));
@@ -607,6 +972,13 @@ function App() {
     const secLink = id => html`<button className="anchor" title="Salin link bagian ini" aria-label="Salin link bagian ini"
       onClick=${() => copyText(deepLink + '&sec=' + id).then(() => flash('Link bagian disalin'))}>${I('link', 18)}</button>`;
 
+    const actions = html`
+      <div className="r-actions">
+        <button className="btn icon" title="Salin link" aria-label="Salin link" onClick=${() => copyText(deepLink).then(() => flash('Link disalin'))}>${I('link', 17)}</button>
+        <button className="btn icon" title="Perbarui dokumen" aria-label="Perbarui dokumen" onClick=${() => go({ step: 'writer', w: EDIT_WRITER(doc) })}>${I('pen', 17)}</button>
+        ${vers.length > 0 && html`<button className="btn icon" title="Unduh PDF" aria-label="Unduh PDF" onClick=${() => window.print()}>${I('download', 17)}</button>`}
+      </div>`;
+
     return html`
       <div className="reader-grid" style=${{ gridTemplateColumns: cols }}>
         ${showToc && wide && html`
@@ -616,32 +988,35 @@ function App() {
           </aside></div>`}
         <article className="article" style=${{ padding: wide ? '28px 56px 96px' : mid ? '24px 32px 60px' : undefined }}>
           <div className="article-in">
-            <nav className="crumbs" aria-label="Breadcrumb" style=${{ marginBottom: 20 }}>
-              <button className="crumb" onClick=${goHome} aria-label="Beranda" style=${{ width: 36, justifyContent: 'center', padding: 0 }}>${I('home', 18)}</button><span className="sep">›</span>
-              <button className="crumb" onClick=${() => go({ step: 'home', homeView: 'browse', type: doc.type, docId: null })}>${docT.short}</button><span className="sep">›</span>
-              <button className="crumb" onClick=${() => go({ step: 'list', dept: dDept.id, type: doc.type })}>${dDept.short}</button><span className="sep">›</span>
-              <span className="crumb-pill">${doc.short}</span>
-            </nav>
+            <div className="r-top">
+              <nav className="crumbs" aria-label="Breadcrumb">
+                <button className="crumb" onClick=${goHome} aria-label="Beranda" style=${{ width: 36, justifyContent: 'center', padding: 0 }}>${I('home', 18)}</button><span className="sep">›</span>
+                <button className="crumb" onClick=${() => goBrowse(doc.type)}>${docT.short}</button><span className="sep">›</span>
+                <button className="crumb" onClick=${() => goBrowse(doc.type, dDept.id)}>${dDept.short}</button>
+                ${mid && html`<span className="sep">›</span><span className="crumb-pill">${doc.short}</span>`}
+              </nav>
+              ${!mid && actions}
+            </div>
             <div className="r-head">
               <div className="r-head-t">
-                <span className="eyebrow lg">${docT.long}</span>
+                ${mid && html`<span className="eyebrow lg">${docT.long}</span>`}
                 <h1 className="r-title">${docTitle(doc)}</h1>
               </div>
-              <div className="r-actions">
-                <button className="btn icon" title="Salin link" aria-label="Salin link" onClick=${() => copyText(deepLink).then(() => flash('Link disalin'))}>${I('link', 17)}</button>
-                <button className="btn icon" title="Perbarui dokumen" aria-label="Perbarui dokumen" onClick=${() => go({ step: 'writer', w: EDIT_WRITER(doc) })}>${I('pen', 17)}</button>
-                ${vers.length > 0 && html`<button className="btn icon" title="Unduh PDF" aria-label="Unduh PDF" onClick=${() => window.print()}>${I('download', 17)}</button>`}
-              </div>
+              ${mid && actions}
             </div>
-            <dl className="r-facts">
-              <div><dt>Kode dokumen</dt><dd className="code">${doc.code}</dd></div>
-              <div><dt>Berlaku sejak</dt><dd>${viewV ? fmtDate(viewV.effectiveDate) : '–'}</dd></div>
-              ${vers.length > 0 && html`<div><dt>Revisi</dt><dd>Rev ${viewV.rev}</dd></div>`}
-              ${doc.pages && html`<div><dt>Halaman</dt><dd>${doc.pages}</dd></div>`}
-              <div className="wide"><dt>Berlaku untuk</dt><dd>${applies(doc)}</dd></div>
-            </dl>
+            ${mid ? html`
+              <dl className="r-facts">
+                <div><dt>Kode dokumen</dt><dd className="code">${doc.code}</dd></div>
+                <div><dt>Berlaku sejak</dt><dd>${viewV ? fmtDate(viewV.effectiveDate) : '–'}</dd></div>
+                ${vers.length > 0 && html`<div><dt>Revisi</dt><dd>Rev ${viewV.rev}</dd></div>`}
+                ${doc.pages && html`<div><dt>Halaman</dt><dd>${doc.pages}</dd></div>`}
+                <div className="wide"><dt>Berlaku untuk</dt><dd>${applies(doc)}</dd></div>
+              </dl>` : html`
+              <p className="r-line"><b>${doc.code}</b>${vers.length > 0 ? ' · Rev ' + viewV.rev : ''}${viewV ? ' · ' + fmtDate(viewV.effectiveDate) : ''} · ${applies(doc)}</p>`}
             ${showToc && !wide && html`
-              <div className="chip-toc">${toc.map(t => html`<button key=${t.id} className=${'chip' + (t.on ? ' on' : '')} onClick=${() => scrollToSec(t.id)}>${t.label}</button>`)}</div>`}
+              <button className="toc-bar" aria-haspopup="dialog" onClick=${() => set({ tocSheet: true })}>
+                ${I('list', 16)}<b>Daftar isi</b><span>${curToc ? curToc.label : ''}</span>${I('chevD', 16)}
+              </button>`}
             ${secs.length ? html`
               ${secs.map(sec => html`
                 <section key=${sec.id} id=${'sec-' + sec.id} className="sec">
@@ -674,6 +1049,12 @@ function App() {
               </div>`}
           </div>
         </article>
+        ${s.tocSheet && !wide && html`
+          <div className="scrim" onClick=${() => set({ tocSheet: false })}></div>
+          <div className="sheet" role="dialog" aria-label="Daftar isi">
+            <div className="sheet-head"><b>Daftar isi</b><button className="d-btn" title="Tutup" aria-label="Tutup" onClick=${() => set({ tocSheet: false })}>${I('x', 19)}</button></div>
+            <nav className="toc" aria-label="Daftar isi">${toc.map(tocRow)}</nav>
+          </div>`}
       </div>`;
   };
 
@@ -681,59 +1062,128 @@ function App() {
   const w = s.w;
   const setW = patch => set(p => ({ w: { ...p.w, ...(typeof patch === 'function' ? patch(p.w) : patch) } }));
   const addKw = t => setW(x => { t = String(t).trim(); return { kw: t && !x.kw.some(k => k.toLowerCase() === t.toLowerCase()) ? [...x.kw, t] : x.kw, kwDraft: '' }; });
-  // Inserts a formatting snippet at the cursor, on its own lines, and selects the first placeholder.
-  const insertSnippet = (snippet, select) => {
-    const ta = bodyInputRef.current;
-    const v = w.body, start = ta ? ta.selectionStart : v.length, end = ta ? ta.selectionEnd : v.length;
-    const before = v.slice(0, start), after = v.slice(end);
-    const pre = !before ? '' : before.endsWith('\n\n') ? '' : before.endsWith('\n') ? '\n' : '\n\n';
-    const post = !after ? '\n' : after.startsWith('\n\n') ? '' : after.startsWith('\n') ? '\n' : '\n\n';
-    const text = pre + snippet + post;
-    setW({ body: before + text + after });
-    const from = before.length + pre.length + snippet.indexOf(select);
-    setTimeout(() => { if (ta) { ta.focus(); ta.setSelectionRange(from, from + select.length); } }, 0);
-  };
-  const SNIPPETS = [
-    { icon: 'heading', label: 'Subjudul', text: '# Judul bagian', select: 'Judul bagian' },
-    { icon: 'listOl', label: 'Langkah', text: '1. Langkah pertama\n2. Langkah kedua', select: 'Langkah pertama' },
-    { icon: 'list', label: 'Poin', text: '- Poin pertama\n- Poin kedua', select: 'Poin pertama' },
-    { icon: 'link', label: 'Tautan', text: '[Teks tautan](https://)', select: 'Teks tautan' },
-    { icon: 'table', label: 'Tabel', text: '| Kolom 1 | Kolom 2 | Kolom 3 |\n| Isi | Isi | Isi |\n| Isi | Isi | Isi |', select: 'Kolom 1' }
-  ];
   const kwSuggest = KW_SUGGEST.filter(k => !w.kw.some(x => x.toLowerCase() === k.toLowerCase())).slice(0, 5);
   const payload = () => ({ id: w.id, title: w.title.trim(), type: w.type, areas: w.areas, body: w.body, effectiveDate: w.date, keywords: w.kw });
   const baseDoc = w.editing ? findDoc(w.id) : null;
   const unchanged = !!baseDoc && baseDoc.versions.length > 0 && baseDoc.versions[0].body.trim() === w.body.trim();
-  const save = status => {
-    if (status === 'published' && !w.title.trim()) { flash('Isi judul artikel dulu'); return; }
+  const dirty = s.step === 'writer' && snapW(w) !== w.base;
+  // Autosave: this device right away, the shared Draf sheet a few seconds after typing stops. Requests run one at a time.
+  const pendingDraft = useRef(null), draftQueue = useRef(Promise.resolve());
+  const pushDraft = d => {
+    pendingDraft.current = null;
+    set({ autosave: { st: 'saving' } });
+    draftQueue.current = draftQueue.current.then(() => run('saveDraft', d)).then(() => {
+      set(p => p.autosave && p.autosave.st === 'saving' ? { autosave: { st: 'saved', at: d.savedAt } } : {});
+    }, err => { set({ autosave: { st: 'local', msg: /panjang/.test((err && err.message) || '') ? err.message : '' } }); });
+  };
+  const removeDraft = key => {
+    pendingDraft.current = null;
+    localDel(key);
+    set(p => ({ autosave: null, drafts: p.drafts.filter(d => d.key !== key) }));
+    draftQueue.current = draftQueue.current.then(() => run('deleteDraft', key)).catch(() => {});
+  };
+  const wSnap = s.step === 'writer' ? snapW(w) + w.key : '';
+  useEffect(() => {
+    if (s.step !== 'writer') return;
+    if (!dirty) { if (s.autosave) removeDraft(w.key); return; }
+    const d = draftOf(w);
+    pendingDraft.current = d;
+    if (!s.autosave || s.autosave.st !== 'saving') set({ autosave: { st: 'saving' } });
+    const toDevice = setTimeout(() => localPut(d), 300), toSheet = setTimeout(() => pushDraft(d), 4000);
+    return () => { clearTimeout(toDevice); clearTimeout(toSheet); };
+  }, [wSnap]);
+  // Leaving the writer or closing the tab saves whatever the timers hadn't got to yet.
+  const flushDraft = () => { const d = pendingDraft.current; if (d) { localPut(d); pushDraft(d); } };
+  useEffect(() => {
+    const onHide = () => { if (pendingDraft.current) localPut(pendingDraft.current); };
+    window.addEventListener('pagehide', onHide);
+    document.addEventListener('visibilitychange', onHide);
+    return () => { window.removeEventListener('pagehide', onHide); document.removeEventListener('visibilitychange', onHide); };
+  }, []);
+  // Drafts to offer: this device's at once, then merged with the shared sheet.
+  useEffect(() => {
+    if (s.step !== 'writer') { flushDraft(); return; }
+    set({ drafts: newestDrafts(localAll()), confirmDiscard: false, autosave: null });
+    let gone = false;
+    draftQueue.current.then(() => run('listDrafts')).then(list => {
+      if (!gone && list) set({ drafts: newestDrafts([...localAll(), ...list]) });
+    }).catch(() => {});
+    return () => { gone = true; };
+  }, [s.step]);
+  const restoreDraft = d => {
+    const doc = d.docId ? findDoc(d.docId) : null;
+    const base = doc ? EDIT_WRITER(doc) : NEW_WRITER();
+    set({ w: { ...base, key: d.key, title: d.title, type: d.type, areas: d.areas, date: d.date || todayIso(), kw: d.keywords || [], body: d.body, restored: true } });
+  };
+  const leaveWriter = () => { const d = baseDoc; if (dirty) flash('Draf tetap tersimpan'); set({ w: NEW_WRITER() }); d ? openDoc(d) : goHome(); };
+  const discardChanges = () => {
+    const key = w.key, doc = baseDoc;
+    removeDraft(key);
+    set({ confirmDiscard: false, w: doc ? EDIT_WRITER(doc) : NEW_WRITER() });
+    flash('Perubahan dibuang');
+  };
+  const publish = () => {
+    if (!w.title.trim()) { flash('Isi judul artikel dulu'); return; }
+    // The document list is grouped by area, so an article without one would be invisible.
+    if (!w.areas.length) { flash('Pilih minimal satu area'); return; }
     if (s.saving) return;
+    const key = w.key;
     set({ saving: true });
-    run('saveArticle', payload(), status).then(res => {
-      if (status === 'published') {
-        const p = payload();
-        // Local preview has no server: fake the revision the server would add.
-        const local = () => {
-          const old = baseDoc || { id: 'lokal-' + Date.now(), code: TYPE_SHORT[p.type], short: p.title, pages: '', signoff: '', versions: [] };
-          const ver = { rev: w.nextRev, effectiveDate: p.effectiveDate, note: old.versions.length ? 'Pembaruan isi dokumen.' : 'Rilis pertama.', body: p.body };
-          return { ...old, ...p, id: old.id, versions: unchanged ? old.versions : [ver, ...old.versions] };
-        };
-        const d = prepDoc(res || local());
-        setDocs(list => [...(list || []).filter(x => x.id !== d.id), d]);
-        set({ saving: false, w: NEW_WRITER() });
-        flash(unchanged ? 'Perubahan disimpan' : 'Diterbitkan · Rev ' + d.versions[0].rev);
-        openDoc(d);
-      } else {
-        set(p => ({ saving: false, w: { ...p.w, id: res ? res.id : p.w.id } }));
-        flash('Draf disimpan');
-      }
+    run('saveArticle', payload(), 'published').then(res => {
+      const p = payload();
+      // Local preview has no server: fake the revision the server would add.
+      const local = () => {
+        const old = baseDoc || { id: 'lokal-' + Date.now(), code: TYPE_SHORT[p.type], short: p.title, pages: '', signoff: '', versions: [] };
+        const ver = { rev: w.nextRev, effectiveDate: p.effectiveDate, note: old.versions.length ? 'Pembaruan isi dokumen.' : 'Rilis pertama.', body: p.body };
+        return { ...old, ...p, id: old.id, versions: unchanged ? old.versions : [ver, ...old.versions] };
+      };
+      const d = prepDoc(res || local());
+      setDocs(list => [...(list || []).filter(x => x.id !== d.id), d]);
+      // Publishing a document clears every draft of it, not only this session's.
+      [key, ...s.drafts.filter(x => w.id && x.docId === w.id).map(x => x.key)].forEach(removeDraft);
+      set({ saving: false, w: NEW_WRITER() });
+      flash(unchanged ? 'Perubahan disimpan' : 'Diterbitkan · Rev ' + d.versions[0].rev);
+      openDoc(d);
     }).catch(err => { set({ saving: false }); flash((err && err.message) || 'Gagal menyimpan'); });
   };
+  const offered = s.drafts.filter(d => d.key !== w.key || !w.restored);
+  const docDraft = w.editing && !w.restored && !dirty ? offered.find(d => d.docId === w.id && (d.body !== w.body || d.title !== w.title)) : null;
+  const newDrafts = !w.editing && !dirty ? offered.filter(d => d.title || d.body) : [];
+  const saveNote = !s.autosave ? null : s.autosave.st === 'saving' ? 'Menyimpan…' : s.autosave.st === 'saved' ? 'Tersimpan ' + fmtWhen(s.autosave.at).split(' ').pop()
+    : s.autosave.msg || 'Tersimpan di perangkat ini saja, koneksi bermasalah';
   const writer = html`
     <div className="writer">
-      <div style=${{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-        <span className="eyebrow lg">Mode penulis</span>
-        <h1 className="page-title">${w.editing ? 'Perbarui artikel' : 'Tulis artikel'}</h1>
+      <div className="w-top">
+        <div style=${{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <span className="eyebrow lg">Mode penulis</span>
+          <h1 className="page-title">${w.editing ? 'Perbarui artikel' : 'Tulis artikel'}</h1>
+        </div>
+        ${dirty && html`
+          <div className="w-status" role="status">
+            <span className=${s.autosave && s.autosave.st === 'local' ? 'warn' : ''}>${saveNote}</span>
+            ${s.confirmDiscard ? html`
+              <button type="button" className="tb-text danger" onClick=${discardChanges}>Ya, buang</button>
+              <button type="button" className="tb-text" onClick=${() => set({ confirmDiscard: false })}>Batal</button>`
+              : html`<button type="button" className="tb-text" onClick=${() => set({ confirmDiscard: true })}>Buang perubahan</button>`}
+          </div>`}
       </div>
+      ${docDraft && html`
+        <div className="draft-note" role="status">
+          <span>Ada perubahan belum diterbitkan dari <b>${fmtWhen(docDraft.savedAt)}</b>.</span>
+          <button type="button" className="tb-text strong" onClick=${() => restoreDraft(docDraft)}>Lanjutkan</button>
+          <button type="button" className="tb-text" onClick=${() => removeDraft(docDraft.key)}>Buang</button>
+        </div>`}
+      ${newDrafts.length > 0 && html`
+        <section className="w-drafts">
+          <span className="eyebrow lg">Lanjutkan draf</span>
+          <div className="rows">
+            ${newDrafts.map(d => html`
+              <div key=${d.key} className="draft-row">
+                <${Row} title=${d.title || 'Tanpa judul'} meta=${(d.docId ? 'Pembaruan dokumen · ' : 'Artikel baru · ') + 'disimpan ' + fmtWhen(d.savedAt)} onClick=${() => restoreDraft(d)} />
+                <button type="button" className="icon-btn" title="Buang draf" aria-label=${'Buang draf ' + (d.title || 'tanpa judul')} onClick=${() => removeDraft(d.key)}>${I('x', 17)}</button>
+              </div>`)}
+          </div>
+        </section>`}
       <section className="w-sec">
         <div className="w-head"><span className="n">1</span><b>Artikel</b></div>
         <label className="field"><span>Judul</span>
@@ -746,14 +1196,8 @@ function App() {
           <div className="pills">${DEPTS.map(d => { const on = w.areas.includes(d.id); return html`<button key=${d.id} className=${'pill sm tint' + (on ? ' on' : '')} aria-pressed=${on}
             onClick=${() => setW(x => ({ areas: on ? x.areas.filter(a => a !== d.id) : [...x.areas, d.id] }))}>${d.short}</button>`; })}</div>
         </div>
-        <div className="field"><label htmlFor="w-body">Isi artikel</label>
-          <div className="editor">
-            <div className="editor-bar" role="toolbar" aria-label="Format isi artikel">
-              ${SNIPPETS.map(sn => html`<button key=${sn.label} type="button" className="editor-btn" onClick=${() => insertSnippet(sn.text, sn.select)}>${I(sn.icon, 16)}<span>${sn.label}</span></button>`)}
-            </div>
-            <textarea id="w-body" ref=${bodyInputRef} className="textarea" value=${w.body} placeholder="Tulis prosedur langkah demi langkah…" onChange=${e => setW({ body: e.target.value })}></textarea>
-          </div>
-          <span className="helper sm">Tautan: [teks](https://alamat). Tabel: satu baris per baris tabel, kolom dipisah tanda |, baris pertama jadi judul kolom.</span>
+        <div className="field"><span>Isi artikel</span>
+          <${BodyEditor} key=${w.edKey} value=${w.body} onChange=${b => setW({ body: b })} onNotice=${flash} />
         </div>
       </section>
       <section className="w-sec" style=${{ gap: 14 }}>
@@ -784,25 +1228,26 @@ function App() {
           <div className="suggest"><span>Saran:</span>${kwSuggest.map(k => html`<button key=${k} className="sug" onClick=${() => addKw(k)}>+ ${k}</button>`)}</div>`}
       </section>
       <div className="w-foot">
-        ${w.editing ? html`<button className="btn" disabled=${s.saving} onClick=${() => { const d = baseDoc; set({ w: NEW_WRITER() }); d ? openDoc(d) : goHome(); }}>Batal</button>`
-          : html`<button className="btn" disabled=${s.saving} onClick=${() => save('draft')}>Simpan draf</button>`}
-        <button className="btn primary" disabled=${s.saving} onClick=${() => save('published')}>${s.saving ? (unchanged ? 'Menyimpan…' : 'Gemini menulis catatan…') : unchanged ? 'Simpan' : w.editing ? 'Terbitkan Rev ' + w.nextRev : 'Terbitkan'}</button>
+        <button className="btn" disabled=${s.saving} onClick=${leaveWriter}>${w.editing ? 'Batal' : 'Tutup'}</button>
+        <button className="btn primary" disabled=${s.saving} onClick=${publish}>${s.saving ? (unchanged ? 'Menyimpan…' : 'Gemini menulis catatan…') : unchanged ? 'Simpan' : w.editing ? 'Terbitkan Rev ' + w.nextRev : 'Terbitkan'}</button>
       </div>
     </div>`;
 
+  // ================================================================= drawer
+  // Example questions only on an empty chat, and on a document page only those it can answer.
+  const ctxDocNow = s.step === 'reader' ? lib.find(d => d.id === s.docId) : null;
+  const docQs = ctxDocNow ? s.docQs[ctxDocNow.id] : null;
+  const pagePrompts = ctxDocNow ? docQs || [] : prompts;
+  const quiet = s.typing || s.msgs.length > 0;
+  const nextPrompts = quiet ? [] : pagePrompts;
+  const promptsPending = !quiet && ctxDocNow && ctxDocNow.versions.length > 0 && !docQs;
   // Answer the page's example questions in the background while the chat sits open, so a click answers at once.
   useEffect(() => {
     if (!s.chatOpen || s.msgs.length || s.typing || !hasServer) return;
     const ctx = ctxDocId();
     const t = setTimeout(() => pagePrompts.slice(0, 3).forEach(q => answer(q, ctx)), 800);
     return () => clearTimeout(t);
-  }, [s.chatOpen, s.docId, s.step, prompts.length]);
-
-  // ================================================================= drawer
-  // Example questions only on an empty chat, and on a document page only those it can answer.
-  const ctxDocNow = s.step === 'reader' ? lib.find(d => d.id === s.docId) : null;
-  const pagePrompts = prompts.filter(p => !ctxDocNow || kwSearch(p, [ctxDocNow]).some(h => h.s && h.n >= Math.max(2, Math.ceil(words(p).length * 0.6))));
-  const nextPrompts = s.typing || s.msgs.length ? [] : pagePrompts;
+  }, [s.chatOpen, s.docId, s.step, pagePrompts.join('|')]);
   const width = clampW(drawerW);
   const startResize = e => {
     e.preventDefault();
@@ -827,7 +1272,7 @@ function App() {
   };
   const drawer = html`
     ${s.chatOpen && html`<div className="scrim" onClick=${() => set({ chatOpen: false })}></div>`}
-    <aside className=${'drawer' + (s.chatOpen ? ' open' : '') + (dragging ? ' dragging' : '')} style=${{ width: mid ? width : '100vw' }} aria-label="Mancu" aria-hidden=${!s.chatOpen}>
+    <aside className=${'drawer' + (s.chatOpen ? ' open' : '') + (dragging ? ' dragging' : '')} style=${{ width: mid ? width : 'calc(100vw - var(--edge, 0px))' }} aria-label="Mancu" aria-hidden=${!s.chatOpen}>
       ${mid && html`<div className="d-resize" role="separator" aria-orientation="vertical" aria-label="Ubah lebar panel" title="Seret untuk mengubah lebar"
         tabIndex="0" aria-valuemin=${DRAWER_MIN} aria-valuemax=${drawerMax()} aria-valuenow=${width}
         onPointerDown=${startResize} onKeyDown=${keyResize} onDoubleClick=${() => { setDrawerW(DRAWER_W); saveW(DRAWER_W); }}><span></span></div>`}
@@ -836,7 +1281,7 @@ function App() {
         <div className="d-name">
           <b>Mancu</b>
           <span className="d-ctx" title=${ctxDoc ? 'Mancu mengutamakan dokumen yang sedang Anda buka' : 'Mancu membaca semua dokumen yang terbit'}>
-            ${loading ? 'Memuat dokumen…' : ctxDoc ? html`Membaca <b>${ctxDoc.title}</b>` : html`Membaca semua SOP · ${readable} dokumen`}
+            ${loading ? 'Memuat dokumen…' : ctxDoc ? html`Membaca <b>${ctxDoc.short || ctxDoc.title}</b>` : html`Membaca semua SOP · ${readable} dokumen`}
           </span>
         </div>
         <button className="d-btn" title="Chat baru" aria-label="Chat baru" onClick=${() => { askSeq.current++; stopThink(); set({ msgs: [], typing: false, think: null }); }}>${I('rotate', 17)}</button>
@@ -844,7 +1289,7 @@ function App() {
       </div>
       <div className="d-body" ref=${bodyRef}>
         ${!s.msgs.length && !s.typing && html`
-          <div className="hello"><b>Ada yang bisa dibantu?</b><span>${ctxDoc ? 'Tanyakan apa saja tentang ' + ctxDoc.title + '.' : 'Tanyakan prosedur, batas, atau alur kerja gudang.'} Setiap jawaban menyebut bagian sumbernya.</span></div>`}
+          <div className="hello"><b>Ada yang bisa dibantu?</b><span>${ctxDoc ? 'Tanyakan apa saja tentang ' + (ctxDoc.short || ctxDoc.title) + '.' : 'Tanyakan prosedur, batas, atau alur kerja gudang.'} Setiap jawaban menyebut bagian sumbernya.</span></div>`}
         ${s.msgs.map((m, i) => m.user ? html`<div key=${i} className="msg-user">${m.text}</div>` : html`
           <div key=${i} className="msg-ai">
             ${m.error ? html`<span className="msg-note">${m.intro}</span>` : html`<span className="intro">${m.intro}</span>`}
@@ -854,8 +1299,14 @@ function App() {
               <div className="src-chips">
                 ${m.sources.map(src => html`<button key=${src.label} className="src-chip" onClick=${() => openSource(src)}>${I('file', 13)}<span>${src.label}</span></button>`)}
               </div>`}
+            ${voteBar(m)}
           </div>`)}
         ${s.typing && thinking(s.think)}
+        ${promptsPending && html`
+          <div className="prompt-list" aria-hidden="true">
+            <span className="prompt-head">Coba tanyakan</span>
+            <span className="prompt-skel"></span><span className="prompt-skel"></span><span className="prompt-skel"></span>
+          </div>`}
         ${nextPrompts.length > 0 && html`
           <div className="prompt-list">
             <span className="prompt-head">Coba tanyakan</span>
@@ -864,7 +1315,7 @@ function App() {
       </div>
       <form className="composer" onSubmit=${e => { e.preventDefault(); ask(s.draft); }}>
         <div className=${'composer-box' + (s.focus === 'chat' ? ' focus' : '')}>
-          <input value=${s.draft} placeholder=${ctxDoc ? 'Tanya tentang ' + ctxDoc.title + '…' : 'Tanya Mancu…'} aria-label="Pertanyaan untuk Mancu" onChange=${e => set({ draft: e.target.value })}
+          <input value=${s.draft} placeholder=${ctxDoc ? 'Tanya tentang ' + (TYPE_SHORT[ctxDoc.type] || 'dokumen') + ' ini…' : 'Tanya Mancu…'} aria-label="Pertanyaan untuk Mancu" onChange=${e => set({ draft: e.target.value })}
             onFocus=${() => set({ focus: 'chat' })} onBlur=${() => set(p => p.focus === 'chat' ? { focus: null } : {})} />
           <button type="submit" className="send" title="Kirim" aria-label="Kirim" disabled=${!s.draft.trim()}>${I('arrowUp', 18)}</button>
         </div>
@@ -873,7 +1324,7 @@ function App() {
     </aside>`;
 
   // ================================================================= page
-  const page = s.step === 'home' ? home : s.step === 'list' ? list : s.step === 'search' ? searchPage : s.step === 'reader' ? reader() : writer;
+  const page = s.step === 'home' ? home : s.step === 'search' ? searchPage : s.step === 'reader' ? reader() : writer;
   return html`
     <div style=${{ minHeight: '100vh' }}>
       ${header}
@@ -883,7 +1334,7 @@ function App() {
       ${s.step === 'reader' && !s.chatOpen && html`
         <button className="fab" onClick=${() => set({ chatOpen: true })}>
           <span className="c">${I('sparkles', 18)}</span>
-          <span className="t"><b>Tanya Mancu AI</b>${mid && html`<span>Asisten SOP gudang</span>`}</span>
+          <b>Tanya Mancu AI</b>
         </button>`}
       ${drawer}
       ${s.toast && html`<div className="toast" role="status">${I('check', 18)}<span>${s.toast}</span></div>`}

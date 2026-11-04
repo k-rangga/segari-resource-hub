@@ -1,0 +1,31 @@
+{
+  "name": "segari-kb-editor",
+  "private": true,
+  "description": "Builds EditorBundle.html, the rich-text editor loaded in Mode penulis. Run: npm install && npm run build",
+  "scripts": {
+    "build": "node build.mjs",
+    "test": "node convert.test.mjs",
+    "check-live": "node check-live.mjs"
+  },
+  "dependencies": {
+    "@tiptap/core": "^3",
+    "@tiptap/pm": "^3",
+    "@tiptap/extension-bold": "^3",
+    "@tiptap/extension-document": "^3",
+    "@tiptap/extension-hard-break": "^3",
+    "@tiptap/extension-heading": "^3",
+    "@tiptap/extension-highlight": "^3",
+    "@tiptap/extension-italic": "^3",
+    "@tiptap/extension-link": "^3",
+    "@tiptap/extension-list": "^3",
+    "@tiptap/extension-paragraph": "^3",
+    "@tiptap/extension-table": "^3",
+    "@tiptap/extension-text": "^3",
+    "@tiptap/extension-underline": "^3",
+    "@tiptap/extensions": "^3"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28"
+  },
+  "type": "module"
+}

@@ -15,6 +15,14 @@ const SPREADSHEET_ID = '1HwcfPdSgeYgLKs_QQovOOnkfipgspQ9nnnDBPbIkMkY';
 const DOC_SHEET = 'Dokumen';
 const VER_SHEET = 'Versi';
 const PROMPT_SHEET = 'Pertanyaan';
+const DRAFT_SHEET = 'Draf';
+const DRAFT_COLS = ['Kunci', 'ID dokumen', 'Disimpan', 'Judul', 'Jenis', 'Area', 'Berlaku', 'Kata kunci', 'Isi'];
+const DRAFT_LIMIT = 100;     // the app is public: keeps the sheet from being flooded
+const DRAFT_KEEP_DAYS = 30;
+const BODY_LIMIT = 50000;    // characters a Google Sheets cell can hold
+const FEEDBACK_SHEET = 'Masukan Mancu';
+const FEEDBACK_COLS = ['Waktu', 'ID dokumen', 'Pertanyaan', 'Penilaian', 'Jawaban'];
+const FEEDBACK_DAILY_LIMIT = 500; // the app is public: keeps the sheet from being flooded
 const DOC_COLS = ['ID', 'Kode', 'Judul', 'Nama pendek', 'Jenis', 'Area', 'Halaman', 'Kata kunci', 'Persetujuan', 'Status', 'Diperbarui'];
 const VER_COLS = ['ID dokumen', 'Rev', 'Berlaku', 'Catatan', 'Isi'];
 const TYPES = ['sop', 'ik', 'spec', 'safety'];
@@ -28,7 +36,8 @@ const FAVICON_URL = 'https://www.google.com/s2/favicons?domain=segari.id&sz=64&f
 const CONTEXT_CHARS = 60000;
 const DOC_CONTEXT_CHARS = 16000; // on a document page: its most relevant sections, enough for a 27-page SOP's key parts
 const CHUNK_TTL = 600;      // seconds the parsed library stays cached
-const ANSWER_TTL = 3600;    // seconds an identical question reuses its answer
+const ANSWER_TTL = 21600;   // seconds an identical question reuses its answer (a saved document starts fresh anyway)
+const SUGGEST_TTL = 21600;  // seconds a document keeps its suggested questions
 
 // ---------------------------------------------------------------- web app
 
@@ -71,6 +80,7 @@ function publishedDocs_() {
 function saveArticle(a, status) {
   a = clean_(a);
   if (status === 'published' && !a.title) throw new Error('Isi judul artikel dulu');
+  checkBodySize_(a.body);
   library_();
   const old = a.id ? readLibrary_().find(d => d.id === a.id) : null;
   const live = old && old.status !== 'draf' && old.versions.length > 0;
@@ -96,6 +106,67 @@ function saveArticle(a, status) {
     }
     bumpLibrary_();
     return readLibrary_().find(d => d.id === id);
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function checkBodySize_(body) {
+  if (body.length > BODY_LIMIT) throw new Error('Isi artikel terlalu panjang (' + body.length + ' karakter, maksimal ' + BODY_LIMIT + '). Pecah menjadi dua dokumen.');
+}
+
+/** The rich-text editor, fetched only when Mode penulis opens so readers don't download it. Built from editor-src/. */
+function getEditorBundle() {
+  return HtmlService.createHtmlOutputFromFile('EditorBundle').getContent();
+}
+
+function draftSheet_() {
+  const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+  return ss.getSheetByName(DRAFT_SHEET) || setupSheet_(ss, DRAFT_SHEET, DRAFT_COLS, ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I']);
+}
+
+/** Autosave from Mode penulis: one row per document (or new article), overwritten on each save. */
+function saveDraft(d) {
+  d = d || {};
+  const key = String(d.key || '');
+  if (!/^[\w-]{1,80}$/.test(key)) throw new Error('Draf tidak valid');
+  const a = clean_({ id: d.docId, title: d.title, type: d.type, areas: d.areas, body: d.body, effectiveDate: d.date, keywords: d.keywords });
+  checkBodySize_(a.body);
+  const row = [key, a.id, String(Date.now()), a.title, a.type, a.areas.join(', '), a.effectiveDate, a.keywords.join(', '), a.body];
+  const lock = LockService.getScriptLock();
+  lock.waitLock(10000);
+  try {
+    const sh = draftSheet_();
+    const at = values_(sh, 1).findIndex(r => String(r[0]) === key);
+    if (at >= 0) { sh.getRange(at + 2, 1, 1, row.length).setValues([row]); return; }
+    if (sh.getLastRow() - 1 >= DRAFT_LIMIT) throw new Error('Draf penuh');
+    sh.getRange(sh.getLastRow() + 1, 1, 1, row.length).setValues([row]);
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/** Saved drafts from the last 30 days, newest first. */
+function listDrafts() {
+  const cutoff = Date.now() - DRAFT_KEEP_DAYS * 86400000;
+  const sh = SpreadsheetApp.openById(SPREADSHEET_ID).getSheetByName(DRAFT_SHEET);
+  if (!sh) return [];
+  return values_(sh, DRAFT_COLS.length).filter(r => String(r[0]) && Number(r[2]) > cutoff).map(r => ({
+    key: String(r[0]), docId: String(r[1]), savedAt: Number(r[2]), title: String(r[3]), type: String(r[4]),
+    areas: String(r[5]).split(',').map(x => x.trim()).filter(Boolean), date: String(r[6]),
+    keywords: String(r[7]).split(',').map(x => x.trim()).filter(Boolean), body: String(r[8])
+  })).sort((a, b) => b.savedAt - a.savedAt);
+}
+
+function deleteDraft(key) {
+  key = String(key || '');
+  const lock = LockService.getScriptLock();
+  lock.waitLock(10000);
+  try {
+    const sh = SpreadsheetApp.openById(SPREADSHEET_ID).getSheetByName(DRAFT_SHEET);
+    if (!sh) return;
+    const at = values_(sh, 1).findIndex(r => String(r[0]) === key);
+    if (at >= 0) sh.deleteRow(at + 2);
   } finally {
     lock.releaseLock();
   }
@@ -280,6 +351,47 @@ function askMancu(question, docId, lane) {
   return result;
 }
 
+/** Three questions the open document can answer, for the empty chat. Empty list when Gemini is unavailable. */
+function suggestQuestions(docId) {
+  docId = String(docId || '');
+  const props = PropertiesService.getScriptProperties();
+  const key = props.getProperty('GEMINI_API_KEY');
+  if (!key) return [];
+  const cache = CacheService.getScriptCache();
+  const gen = props.getProperty('LIB_GEN') || '0';
+  const chunks = cachedChunks_(cache, gen).filter(c => c.docId === docId);
+  if (!chunks.length) return [];
+  const cacheKey = 'sugg:' + gen + ':' + docId;
+  const hit = cache.get(cacheKey);
+  if (hit) return JSON.parse(hit);
+  try {
+    const text = chunks.map(c => c.label + '\n' + c.text).join('\n\n').slice(0, SUGGEST_CHARS);
+    const out = gemini_(key, SUGGEST_PROMPT, text, SUGGEST_SCHEMA, 0.3);
+    const list = (out.items || []).map(q => String(q).trim()).filter(Boolean).slice(0, 3);
+    if (list.length) cache.put(cacheKey, JSON.stringify(list), SUGGEST_TTL);
+    return list;
+  } catch (e) {
+    console.warn('Saran pertanyaan: ' + e.message);
+    return [];
+  }
+}
+
+/** Saves a 👍/👎 on a Mancu answer to the "Masukan Mancu" sheet. */
+function rateAnswer(question, docId, answer, vote) {
+  const label = vote === 'up' ? 'Membantu' : vote === 'down' ? 'Kurang membantu' : '';
+  if (!label || !String(question || '').trim()) return;
+  const cache = CacheService.getScriptCache();
+  const countKey = 'votes:' + Utilities.formatDate(new Date(), TZ, 'yyyyMMdd');
+  const n = Number(cache.get(countKey)) || 0;
+  if (n >= FEEDBACK_DAILY_LIMIT) return;
+  cache.put(countKey, String(n + 1), 90000);
+  // Typed text must stay text: a leading "=" would otherwise run as a sheet formula.
+  const safe = (t, max) => { t = String(t || '').slice(0, max); return /^[=+\-@\t\r]/.test(t) ? "'" + t : t; };
+  const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+  const sheet = ss.getSheetByName(FEEDBACK_SHEET) || setupSheet_(ss, FEEDBACK_SHEET, FEEDBACK_COLS, []);
+  sheet.appendRow([new Date(), safe(docId, 100), safe(question, 500), label, safe(answer, 2000)]);
+}
+
 /** Called when the chat opens so the first question skips the spreadsheet read. */
 function warmMancu() {
   const props = PropertiesService.getScriptProperties();
@@ -330,6 +442,12 @@ const CHANGELOG_PROMPT = [
   'Bahasa Indonesia, sentence case, setiap poin satu kalimat pendek tanpa nomor. Maksimal 6 poin, urut dari yang paling penting.'
 ].join('\n');
 
+const SUGGEST_CHARS = 9000;
+const SUGGEST_PROMPT = [
+  'Anda membantu staf gudang Segari. Dari isi dokumen berikut, tulis tepat 3 pertanyaan singkat dalam Bahasa Indonesia yang sering ditanyakan staf saat bekerja.',
+  'Setiap pertanyaan harus bisa dijawab langsung dari dokumen, spesifik pada satu hal, dan paling banyak 12 kata. Jangan menyebut nama dokumen.'
+].join('\n');
+const SUGGEST_SCHEMA = { type: 'OBJECT', properties: { items: { type: 'ARRAY', items: { type: 'STRING' } } }, required: ['items'] };
 const CHANGELOG_SCHEMA = { type: 'OBJECT', properties: { items: { type: 'ARRAY', items: { type: 'STRING' } } }, required: ['items'] };
 
 const ANSWER_SCHEMA = {
@@ -359,7 +477,7 @@ function chunks_(docs) {
     function push() {
       const c = cur, idx = i;
       out.push({ docId: d.id, sec: 's' + idx, label: d.code + ' · ' + c.title, head: head, keywords: d.keywords.join(' '),
-        get text() { return head + ' (Rev ' + v.rev + ')\n' + c.title + '\n' + c.lines.join('\n').trim(); } });
+        get text() { return head + ' (Rev ' + v.rev + ')\n' + c.title + '\n' + c.lines.join('\n').replace(/<\/?(?:i|u|mark)>/g, '').trim(); } });
     }
   });
   out.forEach((c, n) => { c.id = 'c' + (n + 1); });
