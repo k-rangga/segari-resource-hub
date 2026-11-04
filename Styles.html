@@ -236,6 +236,10 @@ tr.hit td{background:#fde9c4!important}
 @media (hover:none),(max-width:1023px){.sec-h .anchor{display:none}}
 .blk{display:flex;flex-direction:column;gap:12px;scroll-margin-top:90px}
 .blk h3{margin-top:12px;font-size:16.5px;font-weight:650;line-height:26px;color:#2f3431}
+.doc-img{display:block;width:100%;max-width:220px;margin:4px 0 8px;border-radius:8px;border:1px solid var(--line);background:var(--soft2);cursor:zoom-in}
+.pm .doc-img{cursor:default;max-width:160px}
+.zoom{position:fixed;inset:0;z-index:80;display:flex;align-items:center;justify-content:center;width:100%;padding:24px;border:0;background:rgba(18,24,21,.86);cursor:zoom-out}
+.zoom img{max-width:100%;max-height:100%;border-radius:10px;object-fit:contain}
 .prose{font-size:16px;line-height:28px;color:var(--body);text-wrap:pretty;white-space:pre-wrap}
 .prose strong{color:var(--ink);font-weight:600}
 .kv{display:flex;flex-direction:column;gap:18px}
@@ -554,6 +558,18 @@ button:focus-visible,a:focus-visible{outline:none;box-shadow:var(--ring);border-
   .crumbs .crumb{padding:0 4px;white-space:nowrap}
   .sec{padding-top:32px}
   .fab{right:calc(16px + var(--edge,0px));bottom:16px}
+  .tbl.stack table,.tbl.stack tbody,.tbl.stack tr,.tbl.stack td{display:block;min-width:0;width:100%;border:0}
+  .tbl.stack table{border:1px solid var(--ctl);border-radius:10px;overflow:hidden}
+  .tbl.stack thead{display:none}
+  .tbl.stack tr{padding:12px 14px;border-bottom:1px solid var(--ctl)}
+  .tbl.stack tr:last-child{border-bottom:0}
+  .tbl.stack tbody tr:nth-child(even) td{background:transparent}
+  .tbl.stack td{padding:0 0 10px;white-space:normal!important}
+  .tbl.stack td:last-child{padding-bottom:0}
+  .tbl.stack td.blank{display:none}
+  .tbl.stack td:first-child{font-weight:600;color:var(--ink)}
+  .tbl.stack td:not(:first-child)::before{content:attr(data-label);display:block;margin-bottom:4px;font-size:12px;font-weight:600;color:var(--green)}
+  .tbl.stack .doc-img{max-width:100%}
   .pm{padding:14px 14px 28px}
   .ed-bar{padding:4px}
   .tb{width:34px;height:36px}

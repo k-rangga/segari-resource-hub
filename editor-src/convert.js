@@ -2,17 +2,20 @@
  * Article body text <-> editor document.
  * The body text stays the stored format, so the reader, Mancu, search and the changelog keep working unchanged:
  *   "# " section, "## " sub-heading, "1. " steps, "- " bullets, "| a | b |" tables (first row is the header),
- *   **bold**, <i>italic</i>, <u>underline</u>, <mark>highlight</mark>, [text](https://url).
+ *   **bold**, <i>italic</i>, <u>underline</u>, <mark>highlight</mark>, [text](https://url), ![photo](https://url), <br> inside a table cell.
  * Keep the block rules in step with parseBody() in App.html.
  */
 
-const TOKEN = /(\*\*[^*]+\*\*|<i>.*?<\/i>|<u>.*?<\/u>|<mark>.*?<\/mark>|\[[^\]]+\]\(https?:\/\/[^\s)]+\))/g;
+const TOKEN = /(!\[[^\]]*\]\(https?:\/\/[^\s)]+\)|<br>|\*\*[^*]+\*\*|<i>.*?<\/i>|<u>.*?<\/u>|<mark>.*?<\/mark>|\[[^\]]+\]\(https?:\/\/[^\s)]+\))/g;
 const WRAP = [['<mark>', '</mark>', 'highlight'], ['<u>', '</u>', 'underline'], ['<i>', '</i>', 'italic']];
 
 function parseInline(text, marks = []) {
   const out = [];
   String(text).split(TOKEN).forEach(part => {
     if (!part) return;
+    if (part === '<br>') return void out.push({ type: 'hardBreak' });
+    const img = /^!\[([^\]]*)\]\((https?:\/\/[^\s)]+)\)$/.exec(part);
+    if (img) return void out.push({ type: 'image', attrs: { src: img[2], alt: img[1] } });
     if (/^\*\*[^*]+\*\*$/.test(part)) return void out.push(...parseInline(part.slice(2, -2), [...marks, { type: 'bold' }]));
     for (const [open, close, type] of WRAP) {
       if (part.startsWith(open) && part.endsWith(close)) return void out.push(...parseInline(part.slice(open.length, -close.length), [...marks, { type }]));
@@ -96,6 +99,7 @@ export function bodyToDoc(body) {
 function inlineText(nodes, breakAs) {
   return (nodes || []).map(n => {
     if (n.type === 'hardBreak') return breakAs;
+    if (n.type === 'image') return '![' + String(n.attrs.alt || '').replace(/[\[\]]/g, '') + '](' + n.attrs.src + ')';
     if (n.type !== 'text') return '';
     const marks = n.marks || [], has = t => marks.find(m => m.type === t);
     let s = n.text;
@@ -111,7 +115,7 @@ function inlineText(nodes, breakAs) {
 }
 
 const plainText = nodes => (nodes || []).map(n => n.type === 'text' ? n.text : ' ').join('').trim();
-const oneLine = node => inlineText((node.content || []).flatMap(c => c.content || []), ' ').replace(/\s+$/, '');
+const oneLine = (node, breakAs = ' ') => inlineText((node.content || []).flatMap(c => c.content || []), breakAs).replace(/\s+$/, '');
 
 export function docToBody(doc) {
   const out = [];
@@ -129,7 +133,7 @@ export function docToBody(doc) {
       if (items.length) out.push(items.map((t, i) => (b.type === 'bulletList' ? '- ' : (start + i) + '. ') + t).join('\n'));
     } else if (b.type === 'table') {
       const rows = (b.content || []).map(r => (r.content || []).flatMap(c => {
-        const text = oneLine(c).trim().replace(/\|/g, '\\|');
+        const text = oneLine(c, '<br>').trim().replace(/\|/g, '\\|');
         // Merged cells from pasted tables: keep the columns lined up.
         return [text, ...Array(Math.max(0, ((c.attrs && c.attrs.colspan) || 1) - 1)).fill('')];
       }));

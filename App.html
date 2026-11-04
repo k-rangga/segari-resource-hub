@@ -37,6 +37,7 @@ const P = {
   store: ['m2 7 4.41-4.41A2 2 0 0 1 7.83 2h8.34a2 2 0 0 1 1.42.59L22 7', 'M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8', 'M15 22v-4a2 2 0 0 0-2-2h-2a2 2 0 0 0-2 2v4', 'M2 7h20', 'M22 7v3a2 2 0 0 1-2 2 2.7 2.7 0 0 1-1.59-.63.7.7 0 0 0-.82 0A2.7 2.7 0 0 1 16 12a2.7 2.7 0 0 1-1.59-.63.7.7 0 0 0-.82 0A2.7 2.7 0 0 1 12 12a2.7 2.7 0 0 1-1.59-.63.7.7 0 0 0-.82 0A2.7 2.7 0 0 1 8 12a2.7 2.7 0 0 1-1.59-.63.7.7 0 0 0-.82 0A2.7 2.7 0 0 1 4 12a2 2 0 0 1-2-2V7'],
   warehouse: ['M22 8.35V20a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V8.35A2 2 0 0 1 3.26 6.5l8-3.2a2 2 0 0 1 1.48 0l8 3.2A2 2 0 0 1 22 8.35Z', 'M6 18h12', 'M6 14h12', 'M6 22V10h12v12'],
   truck: ['M14 18V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v11a1 1 0 0 0 1 1h2', 'M15 18H9', 'M19 18h2a1 1 0 0 0 1-1v-3.65a1 1 0 0 0-.22-.624l-3.48-4.35A1 1 0 0 0 17.52 8H14', 'M5 18a2 2 0 1 0 4 0 2 2 0 1 0-4 0', 'M15 18a2 2 0 1 0 4 0 2 2 0 1 0-4 0'],
+  scissors: ['M6 9a3 3 0 1 0 0-6 3 3 0 0 0 0 6z', 'M6 21a3 3 0 1 0 0-6 3 3 0 0 0 0 6z', 'M8.12 8.12 12 12', 'M20 4 8.12 15.88', 'M14.8 14.8 20 20'],
   undo: ['M3 7v6h6', 'M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13'],
   redo: ['M21 7v6h-6', 'M3 17a9 9 0 0 1 9-9 9 9 0 0 1 6 2.3l3 2.7'],
   bold: ['M6 12h9a4 4 0 0 1 0 8H7a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h7a4 4 0 0 1 0 8'],
@@ -152,12 +153,15 @@ function parseBody(body, fallbackTitle) {
   return secs;
 }
 
-/** "**bold**", "<i>", "<u>", "<mark>" and "[text](https://…)" (a link that opens in a new tab), in any nesting. */
-const rich = text => String(text).split(/(\*\*[^*]+\*\*|<i>.*?<\/i>|<u>.*?<\/u>|<mark>.*?<\/mark>|\[[^\]]+\]\(https?:\/\/[^\s)]+\))/g).map((part, i) => {
+/** Photos, line breaks, "**bold**", "<i>", "<u>", "<mark>" and "[text](https://…)" (a link that opens in a new tab), in any nesting. */
+const rich = text => String(text).split(/(!\[[^\]]*\]\(https?:\x2F\x2F[^\s)]+\)|<br>|\*\*[^*]+\*\*|<i>.*?<\/i>|<u>.*?<\/u>|<mark>.*?<\/mark>|\[[^\]]+\]\(https?:\x2F\x2F[^\s)]+\))/g).map((part, i) => {
+  if (part === '<br>') return html`<br key=${i} />`;
+  const img = /^!\[([^\]]*)\]\((https?:\x2F\x2F[^\s)]+)\)$/.exec(part);
+  if (img) return html`<img key=${i} className="doc-img" src=${img[2]} alt=${img[1] || 'Foto'} loading="lazy" referrerPolicy="no-referrer" />`;
   if (/^\*\*[^*]+\*\*$/.test(part)) return html`<strong key=${i}>${rich(part.slice(2, -2))}</strong>`;
   const tag = /^<(i|u|mark)>(.*)<\/\1>$/.exec(part);
   if (tag) return React.createElement(tag[1], { key: i }, rich(tag[2]));
-  const m = /^\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)$/.exec(part);
+  const m = /^\[([^\]]+)\]\((https?:\x2F\x2F[^\s)]+)\)$/.exec(part);
   return m ? html`<a key=${i} className="doc-link" href=${m[2]} target="_blank" rel="noopener noreferrer">${rich(m[1])}</a>` : part;
 });
 
@@ -178,7 +182,7 @@ const docHay = d => (d.code + ' ' + d.title + ' ' + d.short + ' ' + d.keywords.j
 
 /** A section's readable lines, without markup or link addresses. */
 function secLines(sec) {
-  const plain = t => String(t).replace(/\*\*|<\/?(?:i|u|mark)>/g, '').replace(/\[([^\]]+)\]\([^)]+\)/g, '$1');
+  const plain = t => String(t).replace(/!\[[^\]]*\]\([^)]*\)/g, '').replace(/<br>/g, ' ').replace(/\*\*|<\/?(?:i|u|mark)>/g, '').replace(/\[([^\]]+)\]\([^)]+\)/g, '$1');
   const lines = [];
   sec.blocks.forEach(b => {
     if (b.kind === 'p' || b.kind === 'h') lines.push(b.text);
@@ -259,7 +263,7 @@ const hist = hasServer ? {
 };
 
 // Recently opened documents, kept per device.
-const AREA_ICONS = { pc: 'factory', dmg: 'box', fc: 'store', storage: 'warehouse', outbound: 'truck' };
+const AREA_ICONS = { '4r': 'scissors', pc: 'factory', dmg: 'box', fc: 'store', storage: 'warehouse', outbound: 'truck' };
 // What Mancu gets to remember: the last three answered questions of this conversation.
 const answerText = m => [m.intro, ...m.items, ...(m.table ? [m.table.headers.join(' | '), ...m.table.rows.map(r => r.join(' | '))] : [])].join(' · ');
 const recentTurns = msgs => msgs.filter(m => m.ai && !m.error && m.q).slice(-3).map(m => ({ q: m.q, a: answerText(m).slice(0, 600) }));
@@ -590,7 +594,7 @@ const saveW = w => { try { localStorage.setItem('kb-drawer-w', String(w)); } cat
 
 function App() {
   const [s, setS] = useState({
-    step: 'home', type: 'all', browseArea: null, browseSort: 'name', dept: null, docId: null, active: 's0', activeSub: null, tocOpen: {}, tocSheet: false, docQs: {}, votes: {}, drafts: [], autosave: null, confirmDiscard: false, anim: true,
+    step: 'home', type: 'all', browseArea: null, browseSort: 'name', dept: null, docId: null, active: 's0', activeSub: null, tocOpen: {}, tocSheet: false, docQs: {}, votes: {}, zoom: null, drafts: [], autosave: null, confirmDiscard: false, anim: true,
     q: '', sq: '', focus: null, fullMsgs: [], fullTyping: false, mq: '', browseQ: '',
     chatOpen: false, msgs: [], typing: false, think: null, draft: '', toast: null, w: NEW_WRITER(), saving: false
   });
@@ -617,6 +621,7 @@ function App() {
 
   // ---- navigation
   const scrollBeforeGo = useRef(null);
+  const histView = useRef(null), histReady = useRef(false), restoring = useRef(false), ownHistoryAt = useRef(0);
   const go = (patch, after) => {
     scrollBeforeGo.current = window.scrollY;
     set({ ...patch, anim: false });
@@ -716,6 +721,7 @@ function App() {
         if (r.current) { e.preventDefault(); r.current.focus(); }
       } else if (e.key === 'Escape') {
         if (tag === 'INPUT' || tag === 'TEXTAREA') e.target.blur();
+        else if (cur.zoom) set({ zoom: null });
         else if (cur.tocSheet) set({ tocSheet: false });
         else if (cur.chatOpen) set({ chatOpen: false });
       }
@@ -729,8 +735,14 @@ function App() {
       setPrompts((res && res.prompts) || []);
       docsRef.current = all;
       setDocs(all);
-      if (hasServer) google.script.url.getLocation(loc => { const d = all.find(x => x.id === loc.parameter.doc); if (d) openDoc(d, loc.parameter.sec); });
-    }).catch(() => { setDocs([]); flash('Dokumen gagal dimuat'); });
+      // History starts only after the address has been read, otherwise it would erase the document in a shared link.
+      const startHistory = () => { histReady.current = true; histView.current = viewOf(sRef.current); hist.replace({ view: histView.current, scroll: 0 }, paramsOf(histView.current)); };
+      if (!hasServer) { startHistory(); return; }
+      google.script.url.getLocation(loc => {
+        const d = all.find(x => x.id === loc.parameter.doc);
+        if (d) { histReady.current = true; openDoc(d, loc.parameter.sec); } else startHistory();
+      });
+    }).catch(() => { histReady.current = true; setDocs([]); flash('Dokumen gagal dimuat'); });
     return () => { window.removeEventListener('resize', onR); window.removeEventListener('keydown', onK); ro.disconnect(); };
   }, []);
 
@@ -738,8 +750,8 @@ function App() {
   const viewOf = p => ({ step: p.step, docId: p.docId, sq: p.sq });
   const viewKey = v => [v.step, v.step === 'reader' ? v.docId : '', v.step === 'search' ? v.sq : ''].join('|');
   const paramsOf = v => v.step === 'reader' && v.docId ? { doc: v.docId } : {};
-  const histView = useRef(null), restoring = useRef(false), ownHistoryAt = useRef(0);
   useEffect(() => {
+    if (!histReady.current) return;
     const v = viewOf(s);
     const saved = scrollBeforeGo.current == null ? window.scrollY : scrollBeforeGo.current;
     scrollBeforeGo.current = null;
@@ -1108,10 +1120,11 @@ function App() {
       case 'p': return html`<p className="prose">${rich(b.text)}</p>`;
       case 'steps': return html`<ol className="steps">${b.items.map((it, i) => html`<li key=${i}><span>${it.n}.</span><span>${rich(it.text)}</span></li>`)}</ol>`;
       case 'bullets': return html`<ul className="bullets">${b.items.map((t, i) => html`<li key=${i}><span>•</span><span>${rich(t)}</span></li>`)}</ul>`;
+      // A table with photos stacks into labelled blocks on a phone, where three columns would be too cramped.
       case 'table': return html`
-        <div className="tbl"><div className="tbl-scroll"><table>
+        <div className=${'tbl' + ([b.head, ...b.rows].some(r => r.some(c => c.includes('!['))) ? ' stack' : '')}><div className="tbl-scroll"><table>
           <thead><tr>${b.head.map((h, i) => html`<th key=${i}>${rich(h)}</th>`)}</tr></thead>
-          <tbody>${b.rows.map((r, i) => html`<tr key=${i}>${r.map((c, j) => html`<td key=${j} style=${{ whiteSpace: c.length < 16 ? 'nowrap' : 'normal' }}>${rich(c)}</td>`)}</tr>`)}</tbody>
+          <tbody>${b.rows.map((r, i) => html`<tr key=${i}>${r.map((c, j) => html`<td key=${j} className=${c ? '' : 'blank'} data-label=${b.head[j] || ''} style=${{ whiteSpace: c.length < 16 ? 'nowrap' : 'normal' }}>${rich(c)}</td>`)}</tr>`)}</tbody>
         </table></div></div>`;
     }
     return null;
@@ -1165,7 +1178,7 @@ function App() {
             <span className="eyebrow">Di halaman ini</span>
             <nav className="toc" aria-label="Di halaman ini">${toc.map(tocRow)}</nav>
           </aside></div>`}
-        <article className="article" style=${{ padding: wide ? '28px 56px 96px' : mid ? '24px 32px 60px' : undefined }}>
+        <article className="article" onClick=${e => { if (e.target.classList.contains('doc-img')) set({ zoom: e.target.src }); }} style=${{ padding: wide ? '28px 56px 96px' : mid ? '24px 32px 60px' : undefined }}>
           <div className="article-in">
             <div className="r-top">
               <nav className="crumbs" aria-label="Breadcrumb">
@@ -1506,6 +1519,7 @@ function App() {
           <b>Tanya Mancu AI</b>
         </button>`}
       ${s.step === 'reader' && drawer}
+      ${s.zoom && html`<button className="zoom" aria-label="Tutup foto" onClick=${() => set({ zoom: null })}><img src=${s.zoom} alt="Foto" referrerPolicy="no-referrer" /></button>`}
       ${s.toast && html`<div className="toast" role="status">${I('check', 18)}<span>${s.toast}</span></div>`}
     </div>`;
 }

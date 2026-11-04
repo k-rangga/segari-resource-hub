@@ -26,7 +26,7 @@ const FEEDBACK_DAILY_LIMIT = 500; // the app is public: keeps the sheet from bei
 const DOC_COLS = ['ID', 'Kode', 'Judul', 'Nama pendek', 'Jenis', 'Area', 'Halaman', 'Kata kunci', 'Persetujuan', 'Status', 'Diperbarui'];
 const VER_COLS = ['ID dokumen', 'Rev', 'Berlaku', 'Catatan', 'Isi'];
 const TYPES = ['sop', 'ik', 'spec', 'safety'];
-const AREAS = ['pc', 'dmg', 'fc', 'storage', 'outbound'];
+const AREAS = ['4r', 'pc', 'dmg', 'fc', 'storage', 'outbound'];
 const TYPE_CODE = { sop: 'SOP', ik: 'IK', spec: 'Specbook', safety: 'SOP' };
 // Fastest first. 3.1 Flash-Lite answered in ~1 s where the -latest aliases took 17-50 s; the others step in when it is busy (503).
 const MODELS = ['gemini-3.1-flash-lite', 'gemini-3.5-flash', 'gemini-flash-lite-latest'];
@@ -322,14 +322,14 @@ function askMancu(question, docId, lane, history) {
   const searchText = turns.slice(-2).map(t => t.q).concat(question).join(' ');
   // Admin notes are part of the key, so editing a note gets a fresh answer.
   const notes = pickNotes_(contextNotes_(cache), searchText, docId);
-  const ansKey = 'ans5:' + gen + ':' + Utilities.base64EncodeWebSafe(Utilities.computeDigest(Utilities.DigestAlgorithm.MD5, notes.map(n => n.id + n.text).join('|') + '|' + docId + '|' + question.toLowerCase().replace(/\s+/g, ' ')));
+  const all = cachedChunks_(cache, gen);
+  const ansKey = 'ans6:' + gen + ':' + all.length + ':' + Utilities.base64EncodeWebSafe(Utilities.computeDigest(Utilities.DigestAlgorithm.MD5, notes.map(n => n.id + n.text).join('|') + '|' + docId + '|' + question.toLowerCase().replace(/\s+/g, ' ')));
   // A follow-up depends on the conversation, so only a first question can reuse a saved answer.
   const hit = turns.length ? null : cache.get(ansKey);
   if (hit) return JSON.parse(hit);
   countQuestion_(props);
 
   // On a document page Mancu reads only that document; elsewhere it reads every published one.
-  const all = cachedChunks_(cache, gen);
   const scope = docId ? all.filter(c => c.docId === docId) : all;
   if (!scope.length) throw new Error('Dokumen ini belum bisa dibaca Mancu.');
   const chunks = pickChunks_(searchText, scope, docId ? DOC_CONTEXT_CHARS : CONTEXT_CHARS);
@@ -518,6 +518,9 @@ const ANSWER_SCHEMA = {
 /** One chunk per "# " section of each document's latest revision. Section ids match the reader (s0, s1, …). */
 function chunks_(docs) {
   const out = [];
+  // Several products can share one document number, so their labels name the product instead.
+  const sharedCode = {};
+  docs.forEach(d => { sharedCode[d.code] = (sharedCode[d.code] || 0) + 1; });
   docs.forEach(d => {
     const v = d.versions[0];
     if (!v || !v.body) return;
@@ -530,8 +533,8 @@ function chunks_(docs) {
     });
     function push() {
       const c = cur, idx = i;
-      out.push({ docId: d.id, sec: 's' + idx, label: d.code + ' · ' + c.title, head: head, keywords: d.keywords.join(' '),
-        get text() { return head + ' (Rev ' + v.rev + ')\n' + c.title + '\n' + c.lines.join('\n').replace(/<\/?(?:i|u|mark)>/g, '').trim(); } });
+      out.push({ docId: d.id, sec: 's' + idx, label: (sharedCode[d.code] > 1 ? d.short || d.title : d.code) + ' · ' + c.title, head: head, keywords: d.keywords.join(' '),
+        get text() { return head + ' (Rev ' + v.rev + ')\n' + c.title + '\n' + c.lines.join('\n').replace(/!\[[^\]]*\]\([^)]*\)/g, '').replace(/<br>/g, ' ').replace(/<\/?(?:i|u|mark)>/g, '').trim(); } });
     }
   });
   out.forEach((c, n) => { c.id = 'c' + (n + 1); });

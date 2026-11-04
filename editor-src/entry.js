@@ -13,6 +13,7 @@ import Highlight from '@tiptap/extension-highlight';
 import Link from '@tiptap/extension-link';
 import HardBreak from '@tiptap/extension-hard-break';
 import { BulletList, OrderedList, ListItem } from '@tiptap/extension-list';
+import Image from '@tiptap/extension-image';
 import { Table, TableRow, TableCell, TableHeader } from '@tiptap/extension-table';
 import { UndoRedo, Placeholder, Dropcursor, Gapcursor } from '@tiptap/extensions';
 import { bodyToDoc, docToBody } from './convert.js';
@@ -24,6 +25,8 @@ const FlatItem = ListItem.extend({
 });
 const OneLineCell = TableCell.extend({ content: 'paragraph' });
 const OneLineHeader = TableHeader.extend({ content: 'paragraph' });
+// Photos already in a document stay intact while editing. Pasting new ones is not supported yet, so pasted images are ignored.
+const KeepImage = Image.extend({ parseHTML() { return []; } });
 // Pasted h3-h6 become sub-headings rather than losing their heading.
 const Headings = Heading.extend({
   parseHTML() {
@@ -112,6 +115,7 @@ function create({ element, body, onChange, onState, onNotice, onLinkKey, onKeyDo
       Headings.configure({ levels: [1, 2] }), Bold, Italic, Underline, Highlight,
       Link.configure({ openOnClick: false, autolink: true, linkOnPaste: true, defaultProtocol: 'https', protocols: ['http', 'https'], HTMLAttributes: { class: 'doc-link', rel: 'noopener noreferrer', target: '_blank' } }),
       BulletList, OrderedList, FlatItem,
+      KeepImage.configure({ inline: true, HTMLAttributes: { class: 'doc-img', referrerpolicy: 'no-referrer', loading: 'lazy' } }),
       Table.configure({ resizable: false }), TableRow, OneLineCell, OneLineHeader,
       Placeholder.configure({
         placeholder: ({ editor: ed, node }) => node.type.name === 'heading' ? (node.attrs.level === 1 ? 'Judul bagian' : 'Subjudul')

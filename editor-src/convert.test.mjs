@@ -6,7 +6,7 @@ import { bodyToDoc, docToBody } from './convert.js';
 
 // The reader's own parser, so the test compares what readers would actually see.
 const app = readFileSync(new URL('../App.html', import.meta.url), 'utf8');
-const start = app.indexOf('function parseBody('), end = app.indexOf('/** "**bold**"', start);
+const start = app.indexOf('function parseBody('), end = app.indexOf('/** Photos, line breaks', start);
 const parseBody = new Function(app.slice(start, end) + '; return parseBody;')();
 
 const round = b => docToBody(bodyToDoc(b));
@@ -26,6 +26,7 @@ const cases = {
   'nested marks': '<mark><u><i>**[a](https://b.id)**</i></u></mark>\n',
   'table with pipe': '| A | B |\n| x \\| y | **z** |\n',
   'empty table cell': '| A | B |\n|  | y |\n',
+  'photos and lines in a cell': '| Parameter | Diterima |\n| Visual | ![Foto](https://a.id/t?id=1&sz=w1000)<br>Warna merah<br>![Foto](https://a.id/t?id=2) |\n',
   'stars stay text': 'Lantai* dan plafon*\n\n*) Berlaku semua\n',
   'text before first section': 'Pembuka\n\n# A\n',
 };
