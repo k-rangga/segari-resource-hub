@@ -52,6 +52,51 @@ const Logo = ({ mark, h }) => html`<span className="ic" dangerouslySetInnerHTML=
   : '<svg viewBox="0 20 940 386" height="' + h + '" style="display:block;height:' + h + 'px;width:auto" role="img" aria-label="Segari" xmlns="http://www.w3.org/2000/svg">' + LOGO_PATHS + '</svg>' }} />`;
 /** The one list row used everywhere: browse, search results and keyword hits. */
 const Row = ({ title, meta, text, tags, onClick }) => html`<button className="row" onClick=${onClick}><span className="t"><b>${title}</b>${meta && html`<span className="meta">${meta}</span>`}${text && html`<span className="ex">${text}</span>`}${tags && tags.length > 0 && html`<span className="row-tags">${tags.map(t => html`<span key=${t.label} className=${'row-tag' + (t.fresh ? ' fresh' : '')}>${t.label}</span>`)}</span>`}</span><i>${I('chevR', 18)}</i></button>`;
+/** A quiet text menu used for the list controls: the selected value is the label, and the menu matches the editor menus. */
+function MenuSelect({ label, value, options, accent }) {
+  const root = useRef();
+  const [open, setOpen] = useState(false);
+  const [at, setAt] = useState(0);
+  const [alignLeft, setAlignLeft] = useState(false);
+  const selected = options.find(o => o.value === value) || options[0];
+  const usable = options.filter(o => !o.disabled);
+  const show = () => {
+    // Keep the menu on screen when the button sits near the left edge of a phone.
+    setAlignLeft(root.current.getBoundingClientRect().right < 230);
+    setAt(Math.max(0, usable.findIndex(o => o.value === value)));
+    setOpen(true);
+  };
+  useEffect(() => {
+    if (!open) return;
+    const away = e => { if (root.current && !root.current.contains(e.target)) setOpen(false); };
+    document.addEventListener('mousedown', away);
+    return () => document.removeEventListener('mousedown', away);
+  }, [open]);
+  const keys = e => {
+    if (!open) {
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); e.stopPropagation(); show(); }
+      return;
+    }
+    if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); setOpen(false); }
+    else if (e.key === 'ArrowDown') { e.preventDefault(); e.stopPropagation(); setAt((at + 1) % usable.length); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); e.stopPropagation(); setAt((at - 1 + usable.length) % usable.length); }
+    else if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); usable[at].choose(); setOpen(false); }
+  };
+  return html`
+    <div className="ms" ref=${root} onKeyDown=${keys}>
+      <button type="button" className=${'ms-btn' + (accent ? ' accent' : '')} aria-haspopup="listbox" aria-expanded=${open} aria-label=${label + ': ' + selected.label} onClick=${() => open ? setOpen(false) : show()}>
+        <span>${selected.label}</span>${I('chevD', 14)}
+      </button>
+      ${open && html`
+        <div className=${'ms-menu' + (alignLeft ? ' left' : '')} role="listbox" aria-label=${label}>
+          ${options.map(o => html`
+            <button key=${o.value} type="button" role="option" aria-selected=${o.value === value} disabled=${o.disabled}
+              className=${'ms-opt' + (usable[at] === o ? ' on' : '')} onMouseEnter=${() => { if (!o.disabled) setAt(usable.indexOf(o)); }} onClick=${() => { o.choose(); setOpen(false); }}>
+              <span className="ms-check">${o.value === value && I('check', 15)}</span><span className="ms-label">${o.label}</span>${o.count != null && html`<span className="ms-n">${o.count}</span>`}
+            </button>`)}
+        </div>`}
+    </div>`;
+}
 const initials = n => String(n).trim().split(/\s+/).slice(0, 2).map(w => w[0] || '').join('').toUpperCase();
 const Avatar = ({ name, size }) => html`<span className="avatar" title=${name} style=${{ width: size, height: size, fontSize: Math.round(size * .36) }}>${initials(name)}</span>`;
 
@@ -216,7 +261,8 @@ const hist = hasServer ? {
 // Recently opened documents, kept per device.
 const AREA_ICONS = { pc: 'factory', dmg: 'box', fc: 'store', storage: 'warehouse', outbound: 'truck' };
 // What Mancu gets to remember: the last three answered questions of this conversation.
-const recentTurns = msgs => msgs.filter(m => m.ai && !m.error && m.q).slice(-3).map(m => ({ q: m.q, a: [m.intro, ...m.items].join(' ').slice(0, 600) }));
+const answerText = m => [m.intro, ...m.items, ...(m.table ? [m.table.headers.join(' | '), ...m.table.rows.map(r => r.join(' | '))] : [])].join(' · ');
+const recentTurns = msgs => msgs.filter(m => m.ai && !m.error && m.q).slice(-3).map(m => ({ q: m.q, a: answerText(m).slice(0, 600) }));
 const RECENT_KEY = 'kb-recent', RECENT_MAX = 3;
 const recentIds = () => { try { return JSON.parse(localStorage.getItem(RECENT_KEY)) || []; } catch (e) { return []; } };
 const rememberDoc = id => { try { localStorage.setItem(RECENT_KEY, JSON.stringify([id, ...recentIds().filter(x => x !== id)].slice(0, 10))); } catch (e) {} };
@@ -606,7 +652,7 @@ function App() {
   const flash = t => { clearTimeout(timers.current.toast); set({ toast: t }); timers.current.toast = setTimeout(() => set({ toast: null }), 2200); };
 
   // ---- Mancu: Gemini on the server, local document search when no key is set
-  const aiMsg = a => ({ ai: true, intro: a.intro, items: a.items || [], note: a.note || '', sources: a.sources || [], error: !!a.error });
+  const aiMsg = a => ({ ai: true, intro: a.intro, table: a.table || null, items: a.items || [], note: a.note || '', sources: a.sources || [], error: !!a.error });
   // On a document page Mancu reads that document first; elsewhere it reads every published one.
   const ctxDocId = () => sRef.current.step === 'reader' ? sRef.current.docId : '';
   // What Mancu reads for a question: the open document (or every document) and the sections that match it best.
@@ -820,7 +866,7 @@ function App() {
     const key = (m.ctx || '') + '|' + m.q, voted = s.votes[key];
     const vote = v => {
       set(p => ({ votes: { ...p.votes, [key]: v } }));
-      run('rateAnswer', m.q, m.ctx || '', [m.intro, ...m.items].join(' · '), v).catch(() => {});
+      run('rateAnswer', m.q, m.ctx || '', answerText(m), v).catch(() => {});
     };
     return html`
       <div className="votes">
@@ -878,11 +924,16 @@ function App() {
   const msgNodes = list => list.map((m, i) => m.user ? html`<div key=${i} className="msg-user">${m.text}</div>` : html`
     <div key=${i} className="msg-ai">
       ${m.error ? html`<span className="msg-note">${m.intro}</span>` : html`<span className="intro">${m.intro}</span>`}
+      ${m.table && html`
+        <div className="tbl compare"><div className="tbl-scroll"><table>
+          <thead><tr>${m.table.headers.map((h, j) => html`<th key=${j}>${rich(h)}</th>`)}</tr></thead>
+          <tbody>${m.table.rows.map((r, j) => html`<tr key=${j}>${r.map((c, k) => html`<td key=${k}>${rich(c)}</td>`)}</tr>`)}</tbody>
+        </table></div></div>`}
       ${m.items.length > 0 && html`<ol className="ans-list">${m.items.map((t, j) => html`<li key=${j}>${rich(t)}</li>`)}</ol>`}
       ${m.note && html`<span className="msg-note">${m.note}</span>`}
       ${m.sources.length > 0 && html`
         <div className="src-chips">
-          ${m.sources.map(src => html`<button key=${src.label} className="src-chip" onClick=${() => openSource(src)}>${I('file', 13)}<span>${src.label}</span></button>`)}
+          ${m.sources.map(src => src.docId ? html`<button key=${src.label} className="src-chip" onClick=${() => openSource(src)}>${I('file', 13)}<span>${src.label}</span></button>` : html`<span key=${src.label} className="src-chip note">${I('pen', 13)}<span>${src.label}</span></span>`)}
         </div>`}
       ${voteBar(m)}
     </div>`);
@@ -965,13 +1016,14 @@ function App() {
     else rows[at - 1].focus();
   };
   const clearSearch = () => { set({ browseQ: '' }); if (browseRef.current) browseRef.current.focus(); };
-  const jenisSelect = html`
-    <label className="sort"><span>Jenis</span>
-      <select value=${s.type} aria-label="Jenis dokumen" onChange=${e => set({ type: e.target.value })}>
-        <option value="all">Semua</option>
-        ${TYPES.map(t => html`<option key=${t.id} value=${t.id}>${t.short} (${typeCount(t.id)})</option>`)}
-      </select>
-    </label>`;
+  const jenisMenu = html`<${MenuSelect} label="Jenis dokumen" value=${s.type} accent=${s.type !== 'all'} options=${[
+    { value: 'all', label: 'Semua jenis', count: typeCount('all'), choose: () => set({ type: 'all' }) },
+    ...TYPES.map(t => { const c = typeCount(t.id); return { value: t.id, label: t.short, count: c, disabled: !c && s.type !== t.id, choose: () => set({ type: t.id }) }; })
+  ]} />`;
+  const sortMenu = html`<${MenuSelect} label="Urutkan" value=${s.browseSort} options=${[
+    { value: 'name', label: 'Nama A-Z', choose: () => set({ browseSort: 'name' }) },
+    { value: 'new', label: 'Terbaru', choose: () => set({ browseSort: 'new' }) }
+  ]} />`;
   const noResults = html`
     <div className="no-results">
       <b>${bq ? 'Tidak ada hasil untuk “' + bq + '”' : 'Belum ada dokumen di filter ini'}</b>
@@ -1014,15 +1066,7 @@ function App() {
         <section className="home-sec">
           <div className="list-bar">
             <span className="eyebrow lg">${bq ? browseHits.length + ' hasil' : (s.browseArea ? (deptOf(s.browseArea) || {}).short : 'Semua dokumen') + (loading ? '' : ' · ' + sorted.length)}</span>
-            <div className="list-tools">
-              ${jenisSelect}
-              ${!bq && html`<label className="sort"><span>Urutkan</span>
-                <select value=${s.browseSort} aria-label="Urutkan dokumen" onChange=${e => set({ browseSort: e.target.value })}>
-                  <option value="name">Nama A-Z</option>
-                  <option value="new">Terbaru</option>
-                </select>
-              </label>`}
-            </div>
+            <div className="list-tools">${jenisMenu}${!bq && sortMenu}</div>
           </div>
           ${bq ? (browseHits.length > 0 ? html`
             <div className="rows">

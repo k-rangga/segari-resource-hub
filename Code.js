@@ -282,7 +282,7 @@ function callModel_(key, model, system, text, schema, temperature) {
   const known = cache.get(memo);
   let i = known === null ? 0 : Number(known), res;
   for (; i < THINKING.length; i++) {
-    const generation = { temperature: temperature, maxOutputTokens: 1024, responseMimeType: 'application/json', responseSchema: schema };
+    const generation = { temperature: temperature, maxOutputTokens: 4096, responseMimeType: 'application/json', responseSchema: schema };
     if (THINKING[i]) generation.thinkingConfig = THINKING[i];
     res = UrlFetchApp.fetch(url, {
       method: 'post',
@@ -318,7 +318,11 @@ function askMancu(question, docId, lane, history) {
   // Same question on the same page within the hour: answer instantly, without Gemini or the daily quota.
   const cache = CacheService.getScriptCache();
   const gen = props.getProperty('LIB_GEN') || '0';
-  const ansKey = 'ans:' + gen + ':' + Utilities.base64EncodeWebSafe(Utilities.computeDigest(Utilities.DigestAlgorithm.MD5, docId + '|' + question.toLowerCase().replace(/\s+/g, ' ')));
+  // Earlier questions help find the right sections and notes when a follow-up is short, like "kalau FC?".
+  const searchText = turns.slice(-2).map(t => t.q).concat(question).join(' ');
+  // Admin notes are part of the key, so editing a note gets a fresh answer.
+  const notes = pickNotes_(contextNotes_(cache), searchText, docId);
+  const ansKey = 'ans5:' + gen + ':' + Utilities.base64EncodeWebSafe(Utilities.computeDigest(Utilities.DigestAlgorithm.MD5, notes.map(n => n.id + n.text).join('|') + '|' + docId + '|' + question.toLowerCase().replace(/\s+/g, ' ')));
   // A follow-up depends on the conversation, so only a first question can reuse a saved answer.
   const hit = turns.length ? null : cache.get(ansKey);
   if (hit) return JSON.parse(hit);
@@ -328,15 +332,14 @@ function askMancu(question, docId, lane, history) {
   const all = cachedChunks_(cache, gen);
   const scope = docId ? all.filter(c => c.docId === docId) : all;
   if (!scope.length) throw new Error('Dokumen ini belum bisa dibaca Mancu.');
-  // Earlier questions help find the right sections when a follow-up is short, like "kalau FC?".
-  const searchText = turns.slice(-2).map(t => t.q).concat(question).join(' ');
   const chunks = pickChunks_(searchText, scope, docId ? DOC_CONTEXT_CHARS : CONTEXT_CHARS);
   const context = chunks.map(c => '[' + c.id + '] ' + c.label + '\n' + c.text).join('\n\n---\n\n');
   const focus = docId ? 'Staf sedang membuka ' + scope[0].head + '. Jawab hanya dari dokumen ini; jika tidak ada, katakan jawabannya tidak ada di dokumen ini.\n\n' : '';
   const past = turns.length ? '\n\nPERCAKAPAN SEBELUMNYA:\n' + turns.map(t => 'Staf: ' + t.q + '\nMancu: ' + t.a).join('\n') : '';
+  const noteText = notes.length ? '\n\nCATATAN ADMIN:\n' + notes.map(n => '[' + n.id + '] ' + n.topic + ': ' + n.text).join('\n') : '';
   let out;
   try {
-    out = gemini_(key, SYSTEM_PROMPT, focus + 'DOKUMEN:\n\n' + context + past + '\n\nPERTANYAAN STAF:\n' + question, ANSWER_SCHEMA, 0.2, Number(lane) || 0);
+    out = gemini_(key, SYSTEM_PROMPT, focus + 'DOKUMEN:\n\n' + context + noteText + past + '\n\nPERTANYAAN STAF:\n' + question, ANSWER_SCHEMA, 0.2, Number(lane) || 0);
   } catch (e) {
     // A missing "connect to an external service" authorization lands here too: run authorizeMancu() once in the editor.
     console.error('Gemini: ' + e.message);
@@ -344,16 +347,37 @@ function askMancu(question, docId, lane, history) {
   }
   const byId = {};
   chunks.forEach(c => { byId[c.id] = c; });
+  notes.forEach(n => { byId[n.id] = { id: n.id, docId: '', sec: '', label: 'Catatan admin · ' + n.topic }; });
+  // Gemini sometimes formats the ids loosely or leaves them out. A real answer must still show where it came from,
+  // so fall back to the most relevant sections it was given.
+  const ids = (out.sourceIds || []).join(' ').match(/\b[ck]\d+\b/g) || [];
+  const named = ids.map(id => byId[id]).filter(Boolean);
+  const answered = !/belum menemukan/i.test(String(out.intro || ''));
+  const used = named.length || !answered ? named : chunks.slice(0, 2);
   const seen = {};
+  const table = compareTable_(out.table);
   const result = {
     intro: String(out.intro || ''),
-    items: (out.items || []).map(String).filter(Boolean).slice(0, 8),
+    table: table,
+    // The table replaces the list, so a comparison never says everything twice.
+    items: table ? [] : (out.items || []).map(String).filter(Boolean).slice(0, 8),
     note: String(out.note || ''),
-    sources: (out.sourceIds || []).map(id => byId[id]).filter(c => c && !seen[c.id] && (seen[c.id] = true))
+    sources: used.filter(c => !seen[c.id] && (seen[c.id] = true))
       .map(c => ({ docId: c.docId, sec: c.sec, label: c.label }))
   };
   if (!turns.length) { try { cache.put(ansKey, JSON.stringify(result), ANSWER_TTL); } catch (e) {} }
   return result;
+}
+
+/** A usable side-by-side table, or null. Every row gets one cell per column, whatever Gemini sent. */
+function compareTable_(t) {
+  const headers = t && Array.isArray(t.headers) ? t.headers.map(h => String(h).trim()).filter(Boolean).slice(0, 5) : [];
+  const rows = t && Array.isArray(t.rows) ? t.rows.filter(Array.isArray) : [];
+  if (headers.length < 2 || !rows.length) return null;
+  return {
+    headers: headers,
+    rows: rows.slice(0, 12).map(r => headers.map((h, i) => String(r[i] == null ? '' : r[i]).trim() || 'Tidak disebutkan'))
+  };
 }
 
 /** Three questions the open document can answer, for the empty chat. Empty list when Gemini is unavailable. */
@@ -382,6 +406,12 @@ function suggestQuestions(docId) {
 }
 
 /** Saves a 👍/👎 on a Mancu answer to the "Masukan Mancu" sheet. */
+/** Text from people or Gemini must stay text in a sheet: a leading "=" would otherwise run as a formula. */
+function safeCell_(text, max) {
+  const t = String(text == null ? '' : text).slice(0, max);
+  return /^[=+\-@\t\r]/.test(t) ? "'" + t : t;
+}
+
 function rateAnswer(question, docId, answer, vote) {
   const label = vote === 'up' ? 'Membantu' : vote === 'down' ? 'Kurang membantu' : '';
   if (!label || !String(question || '').trim()) return;
@@ -390,11 +420,9 @@ function rateAnswer(question, docId, answer, vote) {
   const n = Number(cache.get(countKey)) || 0;
   if (n >= FEEDBACK_DAILY_LIMIT) return;
   cache.put(countKey, String(n + 1), 90000);
-  // Typed text must stay text: a leading "=" would otherwise run as a sheet formula.
-  const safe = (t, max) => { t = String(t || '').slice(0, max); return /^[=+\-@\t\r]/.test(t) ? "'" + t : t; };
   const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
   const sheet = ss.getSheetByName(FEEDBACK_SHEET) || setupSheet_(ss, FEEDBACK_SHEET, FEEDBACK_COLS, []);
-  sheet.appendRow([new Date(), safe(docId, 100), safe(question, 500), label, safe(answer, 2000)]);
+  sheet.appendRow([new Date(), safeCell_(docId, 100), safeCell_(question, 500), label, safeCell_(answer, 2000)]);
 }
 
 /** The last answered questions of a conversation, limited in size because the request comes from the browser. */
@@ -406,7 +434,9 @@ function historyTurns_(history) {
 /** Called when the chat opens so the first question skips the spreadsheet read. */
 function warmMancu() {
   const props = PropertiesService.getScriptProperties();
-  cachedChunks_(CacheService.getScriptCache(), props.getProperty('LIB_GEN') || '0');
+  const cache = CacheService.getScriptCache();
+  cachedChunks_(cache, props.getProperty('LIB_GEN') || '0');
+  contextNotes_(cache);
   return true;
 }
 
@@ -437,12 +467,17 @@ const SYSTEM_PROMPT = [
   'Kamu adalah Mancu, asisten SOP gudang Segari. Staf gudang (inbound, QC, TL/Captain) bertanya lewat aplikasi.',
   'Jawab HANYA dari DOKUMEN yang diberikan. Jangan mengarang aturan, angka, jam, atau nama grup.',
   'Baca semua DOKUMEN dengan teliti sebelum menyimpulkan tidak ada jawaban; istilah bisa berbeda (mis. "PO" = Purchase Order).',
+  'Jika diminta membandingkan atau mencari perbedaan (mis. DMG dan DMT), jangan menunggu kalimat yang membandingkan secara langsung. Baca bagian masing-masing pihak di DOKUMEN dan isi table: headers berisi "Aspek" lalu nama tiap pihak; rows satu baris per aspek (maksimal 10) dengan isi sel singkat. Jika sebuah aspek tidak tertulis untuk satu pihak, tulis "Tidak disebutkan". Untuk perbandingan, intro satu kalimat, items kosong, dan cantumkan semua sumbernya.',
+  'Perhatikan cakupan setiap aturan. Label seperti "PC (DMT & DMG)" berlaku untuk keduanya, dan label "FC" hanya untuk FC. Jangan memindahkan aturan satu area ke area lain. Isi sel hanya jika aturannya jelas berlaku untuk pihak itu. Tampilkan aspek yang benar-benar berbeda; jika sama untuk kedua pihak, tulis sama di kedua sel.',
+  'Selain perbandingan, jangan mengisi table.',
+  'CATATAN ADMIN, jika ada, adalah penjelasan admin tentang istilah dan maksud staf. Gunakan untuk memahami pertanyaan dan sebagai penjelasan tambahan. Jika bertentangan dengan DOKUMEN, ikuti DOKUMEN dan sebutkan di note. Cantumkan id-nya (mis. k2) di sourceIds jika dipakai.',
+  'Jangan menyimpulkan alasan atau aturan yang tidak tertulis. Jika hanya satu pihak yang dibahas, katakan hal itu.',
   'Hanya jika benar-benar tidak ada, intro: "Saya belum menemukan jawabannya di SOP." dan satu item: "Tanyakan ke TL/Captain shift Anda."',
   'Bahasa Indonesia, kalimat pendek dan jelas, sentence case. Boleh memakai "Saya".',
   'intro: satu kalimat jawaban langsung. items: langkah atau poin penting secara berurutan, maksimal 6, tanpa nomor di depan.',
   'note: peringatan penting jika ada (mis. kondisi inbound ditolak), selain itu string kosong.',
-  'sourceIds: id dokumen dalam kurung siku (mis. c3) yang benar-benar dipakai untuk menjawab.',
-  'PERCAKAPAN SEBELUMNYA, jika ada, hanya untuk memahami maksud pertanyaan lanjutan (mis. "kalau FC?" atau "yang tadi"). Fakta jawaban tetap harus berasal dari DOKUMEN, bukan dari percakapan.'
+  'sourceIds: id dokumen dalam kurung siku (mis. c3) yang benar-benar dipakai untuk menjawab. Wajib diisi setiap kali jawaban ditemukan; pada perbandingan, sertakan bagian kedua pihak.',
+  'PERCAKAPAN SEBELUMNYA, jika ada, hanya untuk memahami maksud pertanyaan lanjutan (mis. "kalau FC?" atau "yang tadi"). Fakta jawaban tetap harus berasal dari DOKUMEN atau CATATAN ADMIN, bukan dari percakapan.'
 ].join('\n');
 
 const CHANGELOG_PROMPT = [
@@ -468,7 +503,14 @@ const ANSWER_SCHEMA = {
     intro: { type: 'STRING' },
     items: { type: 'ARRAY', items: { type: 'STRING' } },
     note: { type: 'STRING' },
-    sourceIds: { type: 'ARRAY', items: { type: 'STRING' } }
+    sourceIds: { type: 'ARRAY', items: { type: 'STRING' } },
+    table: {
+      type: 'OBJECT',
+      properties: {
+        headers: { type: 'ARRAY', items: { type: 'STRING' } },
+        rows: { type: 'ARRAY', items: { type: 'ARRAY', items: { type: 'STRING' } } }
+      }
+    }
   },
   required: ['intro', 'items', 'note', 'sourceIds']
 };

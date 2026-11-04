@@ -4,7 +4,7 @@
   "description": "Builds EditorBundle.html, the rich-text editor loaded in Mode penulis. Run: npm install && npm run build",
   "scripts": {
     "build": "node build.mjs",
-    "test": "node convert.test.mjs",
+    "test": "node convert.test.mjs && node review.test.mjs",
     "check-live": "node check-live.mjs"
   },
   "dependencies": {
