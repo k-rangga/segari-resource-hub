@@ -306,10 +306,11 @@ function callModel_(key, model, system, text, schema, temperature) {
  * @param {string=} docId  the open document, or empty for every document
  * @param {number=} lane   0 normally; 1 for the backup request the page sends when the first is slow (starts at the next model)
  */
-function askMancu(question, docId, lane) {
+function askMancu(question, docId, lane, history) {
   question = String(question || '').trim().slice(0, 500);
   docId = String(docId || '');
   if (!question) throw new Error('Pertanyaan kosong');
+  const turns = historyTurns_(history);
   const props = PropertiesService.getScriptProperties();
   const key = props.getProperty('GEMINI_API_KEY');
   if (!key) return null;
@@ -318,7 +319,8 @@ function askMancu(question, docId, lane) {
   const cache = CacheService.getScriptCache();
   const gen = props.getProperty('LIB_GEN') || '0';
   const ansKey = 'ans:' + gen + ':' + Utilities.base64EncodeWebSafe(Utilities.computeDigest(Utilities.DigestAlgorithm.MD5, docId + '|' + question.toLowerCase().replace(/\s+/g, ' ')));
-  const hit = cache.get(ansKey);
+  // A follow-up depends on the conversation, so only a first question can reuse a saved answer.
+  const hit = turns.length ? null : cache.get(ansKey);
   if (hit) return JSON.parse(hit);
   countQuestion_(props);
 
@@ -326,12 +328,15 @@ function askMancu(question, docId, lane) {
   const all = cachedChunks_(cache, gen);
   const scope = docId ? all.filter(c => c.docId === docId) : all;
   if (!scope.length) throw new Error('Dokumen ini belum bisa dibaca Mancu.');
-  const chunks = pickChunks_(question, scope, docId ? DOC_CONTEXT_CHARS : CONTEXT_CHARS);
+  // Earlier questions help find the right sections when a follow-up is short, like "kalau FC?".
+  const searchText = turns.slice(-2).map(t => t.q).concat(question).join(' ');
+  const chunks = pickChunks_(searchText, scope, docId ? DOC_CONTEXT_CHARS : CONTEXT_CHARS);
   const context = chunks.map(c => '[' + c.id + '] ' + c.label + '\n' + c.text).join('\n\n---\n\n');
   const focus = docId ? 'Staf sedang membuka ' + scope[0].head + '. Jawab hanya dari dokumen ini; jika tidak ada, katakan jawabannya tidak ada di dokumen ini.\n\n' : '';
+  const past = turns.length ? '\n\nPERCAKAPAN SEBELUMNYA:\n' + turns.map(t => 'Staf: ' + t.q + '\nMancu: ' + t.a).join('\n') : '';
   let out;
   try {
-    out = gemini_(key, SYSTEM_PROMPT, focus + 'DOKUMEN:\n\n' + context + '\n\nPERTANYAAN STAF:\n' + question, ANSWER_SCHEMA, 0.2, Number(lane) || 0);
+    out = gemini_(key, SYSTEM_PROMPT, focus + 'DOKUMEN:\n\n' + context + past + '\n\nPERTANYAAN STAF:\n' + question, ANSWER_SCHEMA, 0.2, Number(lane) || 0);
   } catch (e) {
     // A missing "connect to an external service" authorization lands here too: run authorizeMancu() once in the editor.
     console.error('Gemini: ' + e.message);
@@ -347,7 +352,7 @@ function askMancu(question, docId, lane) {
     sources: (out.sourceIds || []).map(id => byId[id]).filter(c => c && !seen[c.id] && (seen[c.id] = true))
       .map(c => ({ docId: c.docId, sec: c.sec, label: c.label }))
   };
-  try { cache.put(ansKey, JSON.stringify(result), ANSWER_TTL); } catch (e) {}
+  if (!turns.length) { try { cache.put(ansKey, JSON.stringify(result), ANSWER_TTL); } catch (e) {} }
   return result;
 }
 
@@ -392,6 +397,12 @@ function rateAnswer(question, docId, answer, vote) {
   sheet.appendRow([new Date(), safe(docId, 100), safe(question, 500), label, safe(answer, 2000)]);
 }
 
+/** The last answered questions of a conversation, limited in size because the request comes from the browser. */
+function historyTurns_(history) {
+  if (!Array.isArray(history)) return [];
+  return history.slice(-3).map(t => ({ q: String((t && t.q) || '').trim().slice(0, 500), a: String((t && t.a) || '').trim().slice(0, 800) })).filter(t => t.q);
+}
+
 /** Called when the chat opens so the first question skips the spreadsheet read. */
 function warmMancu() {
   const props = PropertiesService.getScriptProperties();
@@ -430,7 +441,8 @@ const SYSTEM_PROMPT = [
   'Bahasa Indonesia, kalimat pendek dan jelas, sentence case. Boleh memakai "Saya".',
   'intro: satu kalimat jawaban langsung. items: langkah atau poin penting secara berurutan, maksimal 6, tanpa nomor di depan.',
   'note: peringatan penting jika ada (mis. kondisi inbound ditolak), selain itu string kosong.',
-  'sourceIds: id dokumen dalam kurung siku (mis. c3) yang benar-benar dipakai untuk menjawab.'
+  'sourceIds: id dokumen dalam kurung siku (mis. c3) yang benar-benar dipakai untuk menjawab.',
+  'PERCAKAPAN SEBELUMNYA, jika ada, hanya untuk memahami maksud pertanyaan lanjutan (mis. "kalau FC?" atau "yang tadi"). Fakta jawaban tetap harus berasal dari DOKUMEN, bukan dari percakapan.'
 ].join('\n');
 
 const CHANGELOG_PROMPT = [

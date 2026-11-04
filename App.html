@@ -16,6 +16,7 @@ const P = {
   send: ['M14.536 21.686a.5.5 0 0 0 .937-.024l6.5-19a.496.496 0 0 0-.635-.635l-19 6.5a.5.5 0 0 0-.024.937l7.93 3.18a2 2 0 0 1 1.112 1.11z', 'm21.854 2.147-10.94 10.939'],
   check: ['M20 6 9 17l-5-5'],
   chevR: ['m9 18 6-6-6-6'],
+  chevL: ['m15 18-6-6 6-6'],
   chevD: ['m6 9 6 6 6-6'],
   x: ['M18 6 6 18', 'm6 6 12 12'],
   home: ['M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8', 'M3 10a2 2 0 0 1 .709-1.528l7-5.999a2 2 0 0 1 2.582 0l7 5.999A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z'],
@@ -30,6 +31,12 @@ const P = {
   pen: ['M12 20h9', 'M16.376 3.622a1 1 0 0 1 3.002 3.002L7.368 18.635a2 2 0 0 1-.855.506l-2.872.838a.5.5 0 0 1-.62-.62l.838-2.872a2 2 0 0 1 .506-.854z'],
   plus: ['M5 12h14', 'M12 5v14'],
   eraser: ['m7 21-4.3-4.3a1 1 0 0 1 0-1.4l10-10a1 1 0 0 1 1.4 0l5.6 5.6a1 1 0 0 1 0 1.4L12 21', 'M22 21H7', 'm5 11 9 9'],
+  grid: ['M3 3h7v7H3z', 'M14 3h7v7h-7z', 'M14 14h7v7h-7z', 'M3 14h7v7H3z'],
+  factory: ['M2 20a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V8l-7 5V8l-7 5V4a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2Z', 'M17 18h1', 'M12 18h1', 'M7 18h1'],
+  box: ['M11 21.73a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73z', 'M12 22V12', 'm3.3 7 8.7 5 8.7-5', 'm7.5 4.27 9 5.15'],
+  store: ['m2 7 4.41-4.41A2 2 0 0 1 7.83 2h8.34a2 2 0 0 1 1.42.59L22 7', 'M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8', 'M15 22v-4a2 2 0 0 0-2-2h-2a2 2 0 0 0-2 2v4', 'M2 7h20', 'M22 7v3a2 2 0 0 1-2 2 2.7 2.7 0 0 1-1.59-.63.7.7 0 0 0-.82 0A2.7 2.7 0 0 1 16 12a2.7 2.7 0 0 1-1.59-.63.7.7 0 0 0-.82 0A2.7 2.7 0 0 1 12 12a2.7 2.7 0 0 1-1.59-.63.7.7 0 0 0-.82 0A2.7 2.7 0 0 1 8 12a2.7 2.7 0 0 1-1.59-.63.7.7 0 0 0-.82 0A2.7 2.7 0 0 1 4 12a2 2 0 0 1-2-2V7'],
+  warehouse: ['M22 8.35V20a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V8.35A2 2 0 0 1 3.26 6.5l8-3.2a2 2 0 0 1 1.48 0l8 3.2A2 2 0 0 1 22 8.35Z', 'M6 18h12', 'M6 14h12', 'M6 22V10h12v12'],
+  truck: ['M14 18V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v11a1 1 0 0 0 1 1h2', 'M15 18H9', 'M19 18h2a1 1 0 0 0 1-1v-3.65a1 1 0 0 0-.22-.624l-3.48-4.35A1 1 0 0 0 17.52 8H14', 'M5 18a2 2 0 1 0 4 0 2 2 0 1 0-4 0', 'M15 18a2 2 0 1 0 4 0 2 2 0 1 0-4 0'],
   undo: ['M3 7v6h6', 'M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13'],
   redo: ['M21 7v6h-6', 'M3 17a9 9 0 0 1 9-9 9 9 0 0 1 6 2.3l3 2.7'],
   bold: ['M6 12h9a4 4 0 0 1 0 8H7a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h7a4 4 0 0 1 0 8'],
@@ -44,7 +51,7 @@ const Logo = ({ mark, h }) => html`<span className="ic" dangerouslySetInnerHTML=
   ? '<svg viewBox="0 0 217 239" height="' + h + '" style="display:block;height:' + h + 'px;width:auto" role="img" aria-label="Segari" xmlns="http://www.w3.org/2000/svg">' + MARK_PATHS + '</svg>'
   : '<svg viewBox="0 20 940 386" height="' + h + '" style="display:block;height:' + h + 'px;width:auto" role="img" aria-label="Segari" xmlns="http://www.w3.org/2000/svg">' + LOGO_PATHS + '</svg>' }} />`;
 /** The one list row used everywhere: browse, search results and keyword hits. */
-const Row = ({ title, meta, text, onClick }) => html`<button className="row" onClick=${onClick}><span className="t"><b>${title}</b>${meta && html`<span className="meta">${meta}</span>`}${text && html`<span className="ex">${text}</span>`}</span><i>${I('chevR', 18)}</i></button>`;
+const Row = ({ title, meta, text, tags, onClick }) => html`<button className="row" onClick=${onClick}><span className="t"><b>${title}</b>${meta && html`<span className="meta">${meta}</span>`}${text && html`<span className="ex">${text}</span>`}${tags && tags.length > 0 && html`<span className="row-tags">${tags.map(t => html`<span key=${t.label} className=${'row-tag' + (t.fresh ? ' fresh' : '')}>${t.label}</span>`)}</span>`}</span><i>${I('chevR', 18)}</i></button>`;
 const initials = n => String(n).trim().split(/\s+/).slice(0, 2).map(w => w[0] || '').join('').toUpperCase();
 const Avatar = ({ name, size }) => html`<span className="avatar" title=${name} style=${{ width: size, height: size, fontSize: Math.round(size * .36) }}>${initials(name)}</span>`;
 
@@ -58,6 +65,8 @@ const revLabel = d => d.versions.length ? String(d.versions[0].rev) : '–';
 const docTitle = d => d.code && d.code !== TYPE_SHORT[d.type] && /\d/.test(d.code) ? d.title : (d.code ? d.code + ' - ' : '') + d.title;
 /** Contents label: a heading without its trailing "(…)", which stays in the body heading. */
 const tocLabel = t => String(t).replace(/\*\*|<\/?(?:i|u|mark)>/g, '').replace(/\s*\([^)]*\)\s*$/, '') || String(t);
+// A readable name for labels: some documents use their code as the short name.
+const docName = d => d.short && d.short !== d.code ? d.short : d.title;
 const TYPE_SHORT = { sop: 'SOP', ik: 'IK', spec: 'Specbook', safety: 'SOP' };
 const applies = d => d.areas.map(x => (deptOf(x) || {}).short).filter(Boolean).join(' · ') || '–';
 
@@ -114,8 +123,12 @@ const parseSignoff = text => String(text || '').split('\n').map(l => l.trim()).f
 });
 
 // ------------------------------------------------------------ keyword search
-const STOP = new Set('apa yang harus jika dan untuk bagaimana berapa dari ada atau dengan saat tidak sudah pada ini itu bisa kalau mana kapan siapa dilakukan melakukan staf staff cara'.split(' '));
-const words = q => q.toLowerCase().split(/[^a-z0-9]+/).filter(w => w.length >= 3 && !STOP.has(w));
+const STOP = new Set('apa yang harus jika dan untuk bagaimana berapa dari ada atau dengan saat tidak sudah pada ini itu bisa kalau mana kapan siapa dilakukan melakukan staf staff cara di ke se ya yg dg dr pd'.split(' '));
+const words = q => q.toLowerCase().split(/[^a-z0-9]+/).filter(w => w.length >= 2 && !STOP.has(w));
+// Two-letter terms such as PO, QC and FC must match whole words, otherwise PO would also find poin and tempo.
+const wordPattern = w => w.length < 3 ? '\\b' + w + '\\b' : w;
+const hasWord = (text, w) => w.length < 3 ? new RegExp(wordPattern(w)).test(text) : text.includes(w);
+const wordAt = (text, w) => w.length < 3 ? text.search(new RegExp(wordPattern(w))) : text.indexOf(w);
 const docHay = d => (d.code + ' ' + d.title + ' ' + d.short + ' ' + d.keywords.join(' ')).toLowerCase();
 
 /** A section's readable lines, without markup or link addresses. */
@@ -131,7 +144,7 @@ function secLines(sec) {
   return lines.map(plain);
 }
 
-function kwSearch(q, docs) {
+function kwSearch(q, docs, limit = 5) {
   const ws = words(q);
   if (!ws.length) return [];
   const secs = [];
@@ -139,27 +152,27 @@ function kwSearch(q, docs) {
     if (!d.versions.length) return;
     parseBody(d.versions[0].body, d.title).forEach(s => {
       const text = (s.title + ' ' + secLines(s).join(' ')).toLowerCase();
-      const n = ws.filter(w => text.includes(w)).length;
+      const n = ws.filter(w => hasWord(text, w)).length;
       if (n) secs.push({ d, s, n });
     });
   });
-  const ds = docs.map(d => ({ d, n: ws.filter(w => docHay(d).includes(w)).length })).filter(o => o.n);
-  return [...secs.sort((a, b) => b.n - a.n).slice(0, 5), ...ds.sort((a, b) => b.n - a.n).slice(0, 5)];
+  const ds = docs.map(d => ({ d, n: ws.filter(w => hasWord(docHay(d), w)).length })).filter(o => o.n);
+  return [...secs.sort((a, b) => b.n - a.n).slice(0, limit), ...ds.sort((a, b) => b.n - a.n).slice(0, limit)];
 }
 
 /** The section line that matches the most words, trimmed around the first match. */
 function excerpt(sec, ws) {
   const lines = secLines(sec);
-  const score = l => ws.filter(w => l.toLowerCase().includes(w)).length;
+  const score = l => ws.filter(w => hasWord(l.toLowerCase(), w)).length;
   const text = lines.reduce((b, l) => score(l) > score(b) ? l : b, lines[0] || '');
-  const at = Math.max(0, Math.min(...ws.map(w => text.toLowerCase().indexOf(w)).filter(i => i >= 0), text.length) - 40);
+  const at = Math.max(0, Math.min(...ws.map(w => wordAt(text.toLowerCase(), w)).filter(i => i >= 0), text.length) - 40);
   const cut = text.slice(at, at + 120);
   return (at > 0 ? '…' : '') + cut + (at + 120 < text.length ? '…' : '');
 }
 
 /** Wraps the searched words in <mark> so a result shows why it matched. */
 const markWords = (text, ws) => ws.length
-  ? String(text).split(new RegExp('(' + ws.join('|') + ')', 'ig')).map((p, i) => i % 2 ? html`<mark key=${i}>${p}</mark>` : p)
+  ? String(text).split(new RegExp('(' + ws.map(wordPattern).join('|') + ')', 'ig')).map((p, i) => i % 2 ? html`<mark key=${i}>${p}</mark>` : p)
   : text;
 
 /** Used when Gemini is not configured: point at the closest documents. */
@@ -188,6 +201,30 @@ function copyText(text) {
   ta.remove();
   return Promise.resolve();
 }
+
+// Browser history. Apps Script and the local preview use different calls, the app sees one interface.
+const hist = hasServer ? {
+  push: (state, params) => google.script.history.push(state, params),
+  replace: (state, params) => google.script.history.replace(state, params),
+  listen: fn => google.script.history.setChangeHandler(e => fn(e.state))
+} : {
+  push: (state, params) => window.history.pushState(state, '', params.doc ? '?doc=' + params.doc : location.pathname),
+  replace: (state, params) => window.history.replaceState(state, '', params.doc ? '?doc=' + params.doc : location.pathname),
+  listen: fn => window.addEventListener('popstate', e => fn(e.state))
+};
+
+// Recently opened documents, kept per device.
+const AREA_ICONS = { pc: 'factory', dmg: 'box', fc: 'store', storage: 'warehouse', outbound: 'truck' };
+// What Mancu gets to remember: the last three answered questions of this conversation.
+const recentTurns = msgs => msgs.filter(m => m.ai && !m.error && m.q).slice(-3).map(m => ({ q: m.q, a: [m.intro, ...m.items].join(' ').slice(0, 600) }));
+const RECENT_KEY = 'kb-recent', RECENT_MAX = 3;
+const recentIds = () => { try { return JSON.parse(localStorage.getItem(RECENT_KEY)) || []; } catch (e) { return []; } };
+const rememberDoc = id => { try { localStorage.setItem(RECENT_KEY, JSON.stringify([id, ...recentIds().filter(x => x !== id)].slice(0, 10))); } catch (e) {} };
+const FRESH_DAYS = 30;
+const isFresh = d => {
+  const v = d.versions[0], at = v ? Date.parse(v.effectiveDate) : NaN;
+  return at <= Date.now() && Date.now() - at <= FRESH_DAYS * 86400000;
+};
 
 // ------------------------------------------------------------ app
 // `base` is the writer's untouched state: anything different is unsaved work. `edKey` remounts the editor on new content.
@@ -507,8 +544,8 @@ const saveW = w => { try { localStorage.setItem('kb-drawer-w', String(w)); } cat
 
 function App() {
   const [s, setS] = useState({
-    step: 'home', homeView: 'search', type: 'sop', dept: null, docId: null, active: 's0', activeSub: null, tocOpen: {}, tocSheet: false, docQs: {}, votes: {}, drafts: [], autosave: null, confirmDiscard: false, anim: true,
-    q: '', sq: '', focus: null, homeQ: null, homeAns: null, homeTyping: false, homeTab: 'mancu', browseQ: '',
+    step: 'home', type: 'all', browseArea: null, browseSort: 'name', dept: null, docId: null, active: 's0', activeSub: null, tocOpen: {}, tocSheet: false, docQs: {}, votes: {}, drafts: [], autosave: null, confirmDiscard: false, anim: true,
+    q: '', sq: '', focus: null, fullMsgs: [], fullTyping: false, mq: '', browseQ: '',
     chatOpen: false, msgs: [], typing: false, think: null, draft: '', toast: null, w: NEW_WRITER(), saving: false
   });
   const set = patch => setS(p => ({ ...p, ...(typeof patch === 'function' ? patch(p) : patch) }));
@@ -533,10 +570,13 @@ function App() {
   const findDoc = id => docsRef.current.find(d => d.id === id);
 
   // ---- navigation
+  const scrollBeforeGo = useRef(null);
   const go = (patch, after) => {
+    scrollBeforeGo.current = window.scrollY;
     set({ ...patch, anim: false });
     window.scrollTo({ top: 0 });
-    requestAnimationFrame(() => requestAnimationFrame(() => { set({ anim: true }); if (after) after(); }));
+    // A timer, not an animation frame: frames pause while a page is not painting, which would leave it blank.
+    setTimeout(() => { set({ anim: true }); if (after) after(); }, 30);
   };
   const hdrH = () => (hdrRef.current ? hdrRef.current.offsetHeight : 65);
   const scrollToSec = id => { const el = document.getElementById('sec-' + id); if (el) window.scrollTo({ top: el.getBoundingClientRect().top + window.scrollY - hdrH() - 75 }); set({ active: id, tocSheet: false }); };
@@ -545,7 +585,7 @@ function App() {
   const jumpToLine = (secId, ws) => {
     const root = document.getElementById('sec-' + secId);
     if (!root) return;
-    const score = el => ws.filter(w => el.textContent.toLowerCase().includes(w)).length;
+    const score = el => ws.filter(w => hasWord(el.textContent.toLowerCase(), w)).length;
     const best = [...root.querySelectorAll('li, p, tr, h3')].reduce((b, el) => score(el) > (b ? score(b) : 0) ? el : b, null);
     if (!best) return scrollToSec(secId);
     window.scrollTo({ top: best.getBoundingClientRect().top + window.scrollY - hdrH() - 90 });
@@ -557,18 +597,12 @@ function App() {
     if (!d) return;
     const cur = sRef.current;
     const dept = d.areas.includes(cur.dept) ? cur.dept : d.areas[0] || null;
-    go({ step: 'reader', docId: d.id, type: d.type, dept, active: 's0', activeSub: null, tocOpen: {}, tocSheet: false, q: '' }, sec ? () => setTimeout(() => ws && ws.length ? jumpToLine(sec, ws) : scrollToSec(sec), 60) : null);
-    if (hasServer) google.script.history.replace(null, { doc: d.id });
+    rememberDoc(d.id);
+    go({ step: 'reader', docId: d.id, dept, active: 's0', activeSub: null, tocOpen: {}, tocSheet: false, q: '' }, sec ? () => setTimeout(() => ws && ws.length ? jumpToLine(sec, ws) : scrollToSec(sec), 60) : null);
   };
-  const goHome = () => { go({ step: 'home', homeView: 'search', docId: null, q: '', homeQ: null, homeAns: null, homeTyping: false }); if (hasServer) google.script.history.replace(null, {}); };
-  // The browse page lists every document by area; arriving from a document lands on that document's area.
-  const goBrowse = (type, area) => {
-    go({ step: 'home', homeView: 'browse', docId: null, ...(type ? { type } : {}) }, area ? () => {
-      const el = document.getElementById('area-' + area);
-      if (el) window.scrollTo({ top: el.getBoundingClientRect().top + window.scrollY - hdrH() - 16 });
-    } : null);
-    if (hasServer) google.script.history.replace(null, {});
-  };
+  const goHome = () => go({ step: 'home', docId: null, q: '' });
+  // From a document breadcrumb: the list, filtered to that document type or area.
+  const goBrowse = (type, area) => go({ step: 'home', docId: null, browseQ: '', ...(type ? { type, browseArea: area || null } : {}) });
   const flash = t => { clearTimeout(timers.current.toast); set({ toast: t }); timers.current.toast = setTimeout(() => set({ toast: null }), 2200); };
 
   // ---- Mancu: Gemini on the server, local document search when no key is set
@@ -579,7 +613,7 @@ function App() {
   const thinkFor = (text, docId) => {
     const pool = docId ? docsRef.current.filter(d => d.id === docId) : docsRef.current.filter(d => d.versions.length);
     const secs = kwSearch(text, pool).filter(h => h.s).slice(0, 3).map(h => h.s.title);
-    return { ctx: docId || '', label: docId && pool[0] ? (pool[0].short || pool[0].title) : pool.length + ' dokumen', secs, phase: 0 };
+    return { ctx: docId || '', label: docId && pool[0] ? docName(pool[0]) : pool.length + ' dokumen', secs, phase: 0 };
   };
   // Reading steps advance on a timer while Gemini works; the answer replaces them whenever it arrives.
   const startThink = () => {
@@ -588,12 +622,13 @@ function App() {
   };
   const stopThink = () => (timers.current.think || []).forEach(clearTimeout);
   // Answers are kept for the session per page and question, so a repeat (or a prefetched example) shows at once.
-  const answer = (text, docId) => {
-    const key = (docId || '') + '|' + text.trim().toLowerCase();
+  const answer = (text, docId, history = []) => {
+    // A follow-up depends on the conversation, so only a first question can reuse a saved answer.
+    const key = history.length ? null : (docId || '') + '|' + text.trim().toLowerCase();
     const memo = timers.current.memo || (timers.current.memo = {});
-    if (memo[key]) return memo[key];
+    if (key && memo[key]) return memo[key];
     // Gemini's speed varies a lot: if no answer within 8 s, a backup request starts on another model and the first answer wins.
-    const call = lane => run('askMancu', text, docId || '', lane).then(a => a || localAnswer(text, docsRef.current));
+    const call = lane => run('askMancu', text, docId || '', lane, history).then(a => a || localAnswer(text, docsRef.current));
     const p = new Promise((ok, fail) => {
       let running = 0, started = false, done = false, timer = null;
       const settle = a => { if (!done) { done = true; clearTimeout(timer); ok(a); } };
@@ -602,25 +637,25 @@ function App() {
       start(0);
       if (hasServer) timer = setTimeout(startBackup, 8000);
     }).catch(err => ({ error: true, intro: String((err && err.message) || 'Mancu sedang tidak tersedia. Coba lagi sebentar.').replace(/^(Error|Exception):\s*/, ''), items: [], note: '', sources: [] }));
-    memo[key] = p;
-    p.then(a => { if (a.error) delete memo[key]; });
+    if (key) { memo[key] = p; p.then(a => { if (a.error) delete memo[key]; }); }
     return p;
   };
   const ask = text => {
     text = (text || '').trim();
     if (!text) return;
     const seq = ++askSeq.current, ctx = ctxDocId();
-    set(p => ({ chatOpen: true, typing: true, think: thinkFor(text, ctx), draft: '', msgs: [...p.msgs, { user: true, text }] }));
+    set(p => ({ chatOpen: true, typing: true, fullTyping: false, think: thinkFor(text, ctx), draft: '', msgs: [...p.msgs, { user: true, text }] }));
     startThink();
-    answer(text, ctx).then(a => { if (seq !== askSeq.current) return; stopThink(); set(p => ({ typing: false, think: null, msgs: [...p.msgs, { ...aiMsg(a), q: text, ctx }] })); });
+    answer(text, ctx, recentTurns(sRef.current.msgs)).then(a => { if (seq !== askSeq.current) return; stopThink(); set(p => ({ typing: false, think: null, msgs: [...p.msgs, { ...aiMsg(a), q: text, ctx }] })); });
   };
-  const askHome = text => {
+  // The full-page chat reads every published document and keeps its own conversation.
+  const askFull = text => {
     text = (text || '').trim();
     if (!text) { if (heroRef.current) heroRef.current.focus(); return; }
     const seq = ++askSeq.current;
-    set({ q: text, homeQ: text, homeAns: null, homeTyping: true, homeTab: 'mancu', think: thinkFor(text, '') });
+    set(p => ({ mq: '', fullTyping: true, typing: false, think: thinkFor(text, ''), fullMsgs: [...p.fullMsgs, { user: true, text }] }));
     startThink();
-    answer(text).then(a => { if (seq !== askSeq.current) return; stopThink(); set({ homeTyping: false, think: null, homeAns: { ...aiMsg(a), q: text, ctx: '' } }); });
+    answer(text, '', recentTurns(sRef.current.fullMsgs)).then(a => { if (seq !== askSeq.current) return; stopThink(); set(p => ({ fullTyping: false, think: null, fullMsgs: [...p.fullMsgs, { ...aiMsg(a), q: text, ctx: '' }] })); });
   };
   const openSource = src => { set({ chatOpen: false }); openDoc(findDoc(src.docId), src.sec); };
 
@@ -631,7 +666,7 @@ function App() {
     const onK = e => {
       const tag = e.target.tagName, cur = sRef.current;
       if (e.key === '/' && tag !== 'INPUT' && tag !== 'TEXTAREA') {
-        const r = cur.step === 'home' ? (cur.homeView === 'search' ? heroRef : browseRef) : headRef;
+        const r = cur.step === 'home' ? browseRef : cur.step === 'mancu' ? heroRef : headRef;
         if (r.current) { e.preventDefault(); r.current.focus(); }
       } else if (e.key === 'Escape') {
         if (tag === 'INPUT' || tag === 'TEXTAREA') e.target.blur();
@@ -652,6 +687,49 @@ function App() {
     }).catch(() => { setDocs([]); flash('Dokumen gagal dimuat'); });
     return () => { window.removeEventListener('resize', onR); window.removeEventListener('keydown', onK); ro.disconnect(); };
   }, []);
+
+  // Every page change is a history entry, so the browser Back button returns to the previous page and its scroll position.
+  const viewOf = p => ({ step: p.step, docId: p.docId, sq: p.sq });
+  const viewKey = v => [v.step, v.step === 'reader' ? v.docId : '', v.step === 'search' ? v.sq : ''].join('|');
+  const paramsOf = v => v.step === 'reader' && v.docId ? { doc: v.docId } : {};
+  const histView = useRef(null), restoring = useRef(false), ownHistoryAt = useRef(0);
+  useEffect(() => {
+    const v = viewOf(s);
+    const saved = scrollBeforeGo.current == null ? window.scrollY : scrollBeforeGo.current;
+    scrollBeforeGo.current = null;
+    ownHistoryAt.current = Date.now();
+    if (!histView.current) { histView.current = v; hist.replace({ view: v, scroll: 0 }, paramsOf(v)); return; }
+    if (restoring.current) { restoring.current = false; histView.current = v; return; }
+    hist.replace({ view: histView.current, scroll: saved }, paramsOf(histView.current));
+    hist.push({ view: v, scroll: 0 }, paramsOf(v));
+    histView.current = v;
+  }, [viewKey(viewOf(s))]);
+  useEffect(() => {
+    hist.listen(state => {
+      if (!state || !state.view) return;
+      // Apps Script can report the app's own history calls back late, which would undo the page change that just happened.
+      if (Date.now() - ownHistoryAt.current < 700) return;
+      if (viewKey(state.view) !== viewKey(viewOf(sRef.current))) restoring.current = true;
+      set({ ...state.view, anim: true, tocSheet: false, tocOpen: {}, active: 's0', activeSub: null });
+      setTimeout(() => window.scrollTo({ top: state.scroll || 0 }), 30);
+    });
+  }, []);
+
+  useEffect(() => {
+    if (s.step === 'mancu') setTimeout(() => { if (heroRef.current) heroRef.current.focus(); }, 60);
+    // The side chat belongs to a document page, so it closes everywhere else.
+    if (s.step !== 'reader' && sRef.current.chatOpen) set({ chatOpen: false });
+  }, [s.step]);
+
+  // Full-page chat: a new question moves to the bottom, a new answer shows from its question.
+  useEffect(() => {
+    if (s.step !== 'mancu' || !s.fullMsgs.length) return;
+    // Keep typing without clicking back into the box. Skipped on touch screens, where it would reopen the keyboard.
+    if (!touchLayout() && heroRef.current) heroRef.current.focus({ preventScroll: true });
+    const asked = [...document.querySelectorAll('.full-chat .msg-user')].pop();
+    if (s.fullTyping || !asked) { window.scrollTo({ top: document.documentElement.scrollHeight }); return; }
+    window.scrollTo({ top: asked.getBoundingClientRect().top + window.scrollY - hdrH() - 76 });
+  }, [s.fullMsgs.length, s.fullTyping]);
 
   const readerDoc = s.step === 'reader' ? findDoc(s.docId) : null;
   // Readers only see the latest revision; older ones live on as changelog entries.
@@ -686,18 +764,23 @@ function App() {
   }, [s.msgs, s.typing]);
 
   // Mancu answers only about the page it was asked on: leaving that page stops the answer.
+  // Each document starts its own side conversation, and coming back to the same document keeps it.
+  const chatDoc = useRef(null);
   useEffect(() => {
     const cur = sRef.current;
-    if (!cur.typing || !cur.think || cur.think.ctx === ctxDocId()) return;
-    askSeq.current++;
-    stopThink();
-    set(p => ({ typing: false, think: null, msgs: [...p.msgs, { ai: true, error: true, intro: 'Halaman berubah, jadi jawaban dihentikan. Mancu hanya membaca dokumen yang sedang dibuka. Tanyakan lagi di halaman ini.', items: [], note: '', sources: [] }] }));
+    const stopped = cur.typing && cur.think && cur.think.ctx !== ctxDocId();
+    if (stopped) { askSeq.current++; stopThink(); }
+    const stopNote = { ai: true, error: true, intro: 'Halaman berubah, jadi jawaban dihentikan. Mancu hanya membaca dokumen yang sedang dibuka. Tanyakan lagi di halaman ini.', items: [], note: '', sources: [] };
+    const newDoc = cur.step === 'reader' && chatDoc.current !== cur.docId;
+    if (cur.step === 'reader') chatDoc.current = cur.docId;
+    if (newDoc) set({ msgs: stopped ? [stopNote] : [], draft: '', ...(stopped ? { typing: false, think: null } : {}) });
+    else if (stopped) set(p => ({ typing: false, think: null, msgs: [...p.msgs, stopNote] }));
   }, [s.step, s.docId]);
 
   // Warm the server cache as soon as a document or the chat opens, so the first answer starts sooner.
   useEffect(() => {
-    if ((s.chatOpen || s.step === 'reader') && !timers.current.warm) { timers.current.warm = true; run('warmMancu').catch(() => {}); }
-  }, [s.chatOpen, s.step]);
+    if ((s.step === 'mancu' || s.step === 'reader') && !timers.current.warm) { timers.current.warm = true; run('warmMancu').catch(() => {}); }
+  }, [s.step]);
 
   // Suggested questions for the open document come from Gemini (cached on the server); section names stand in if it is slow or fails.
   useEffect(() => {
@@ -750,9 +833,9 @@ function App() {
 
   // ================================================================= header
   // Keyword search over sections (then whole documents) for the results page.
-  const keywordHits = q => {
+  const keywordHits = (q, pool = lib, limit = 5) => {
     const seen = {}, out = [], ws = words(q);
-    kwSearch(q, lib).forEach(h => {
+    kwSearch(q, pool, limit).forEach(h => {
       const key = h.d.id + (h.s ? '#' + h.s.id : '');
       if (seen[key] || (!h.s && out.some(o => o.d.id === h.d.id))) return;
       seen[key] = true;
@@ -763,7 +846,8 @@ function App() {
   };
   const goSearch = q => { q = (q || '').trim(); if (!q) return; if (headRef.current) headRef.current.blur(); go({ step: 'search', sq: q, q }); };
   // From the results page Mancu answers on the home screen, across every document.
-  const askFromSearch = q => { go({ step: 'home', homeView: 'search', docId: null }); if (hasServer) google.script.history.replace(null, {}); askHome(q); };
+  // Mancu has its own page, opened only from its own card or button.
+  const goMancu = q => { go({ step: 'mancu', docId: null }); if (q) askFull(q); };
   const header = html`
     <header className="hdr" ref=${hdrRef}>
       <div className="hdr-in">
@@ -784,115 +868,170 @@ function App() {
         <div className="hdr-right">
           <button className=${'btn-writer' + (isWriter ? ' on' : '')} title=${isWriter ? 'Keluar mode penulis' : 'Mode penulis'}
             onClick=${() => isWriter ? goHome() : go({ step: 'writer', ...(s.w.editing ? { w: NEW_WRITER() } : {}) })}>
-            ${I('pen', 16)}${mid && html`<span>${isWriter ? 'Keluar mode penulis' : 'Mode penulis'}</span>`}
+            ${I('pen', 16)}${mid && isWriter && html`<span>Keluar mode penulis</span>`}
           </button>
         </div>
       </div>
     </header>`;
 
-  // ================================================================= home
-  const homeWs = s.homeQ ? words(s.homeQ) : [];
-  const kwRes = s.homeQ ? kwSearch(s.homeQ, lib).map(r => r.s
-    ? { key: r.d.id + r.s.id, title: r.s.title, meta: r.d.code + ' · ' + r.d.title + ' · Rev ' + revLabel(r.d), open: () => openDoc(r.d, r.s.id, homeWs) }
-    : { key: r.d.id, title: r.d.title, meta: r.d.code + ' · ' + applies(r.d) + ' · Rev ' + revLabel(r.d), open: () => openDoc(r.d) }) : [];
-  const ans = s.homeAns;
-
-  const homeSearch = html`
-    <div>
-      <div className="hero" style=${{ paddingTop: s.homeQ ? 40 : '15vh' }}>
-        <h1 className="page-title">Cari apa hari ini?</h1>
-        <div className=${'hero-bar' + (s.focus === 'hero' ? ' focus' : '')}>
-          ${I('search')}
-          <input ref=${heroRef} value=${s.q} placeholder="Tanya Mancu atau cari dokumen…" aria-label="Tanya Mancu atau cari dokumen"
-            onChange=${e => { const v = e.target.value; if (!v) { askSeq.current++; set({ q: v, homeQ: null, homeAns: null, homeTyping: false }); } else set({ q: v }); }}
-            onFocus=${() => set({ focus: 'hero' })} onBlur=${() => set(p => p.focus === 'hero' ? { focus: null } : {})}
-            onKeyDown=${e => { if (e.key === 'Enter') { askHome(s.q); e.target.blur(); } }} />
-          ${!s.q && html`<span className="keycap" title="Tekan / untuk mencari">/</span>`}
-          ${s.q && html`<button className="icon-btn" title="Hapus" aria-label="Hapus" onMouseDown=${e => { e.preventDefault(); askSeq.current++; set({ q: '', homeQ: null, homeAns: null, homeTyping: false }); }}>${I('x', 18)}</button>`}
-          <button className="spark-btn" title="Tanya Mancu" aria-label="Tanya Mancu" onMouseDown=${e => { e.preventDefault(); askHome(s.q); }}>${I('sparkles', 22)}</button>
+  // ================================================================= Mancu page
+  const msgNodes = list => list.map((m, i) => m.user ? html`<div key=${i} className="msg-user">${m.text}</div>` : html`
+    <div key=${i} className="msg-ai">
+      ${m.error ? html`<span className="msg-note">${m.intro}</span>` : html`<span className="intro">${m.intro}</span>`}
+      ${m.items.length > 0 && html`<ol className="ans-list">${m.items.map((t, j) => html`<li key=${j}>${rich(t)}</li>`)}</ol>`}
+      ${m.note && html`<span className="msg-note">${m.note}</span>`}
+      ${m.sources.length > 0 && html`
+        <div className="src-chips">
+          ${m.sources.map(src => html`<button key=${src.label} className="src-chip" onClick=${() => openSource(src)}>${I('file', 13)}<span>${src.label}</span></button>`)}
+        </div>`}
+      ${voteBar(m)}
+    </div>`);
+  const newChat = () => { askSeq.current++; stopThink(); set({ mq: '', fullMsgs: [], fullTyping: false, think: null }); if (heroRef.current) heroRef.current.focus(); };
+  const mancuCard = (title, sub, q, small) => html`
+    <button className=${'mancu-card' + (small ? ' sm' : '')} onClick=${() => goMancu(q)}>
+      <span className="mc-mark">${I('sparkles', small ? 16 : 20)}</span>
+      <span className="mc-t"><b>${title}</b>${sub && html`<span>${sub}</span>`}</span>
+      <span className="mc-go">${I('arrowR', 18)}</span>
+    </button>`;
+  const fullComposer = html`
+    <form className="mancu-input" onSubmit=${e => { e.preventDefault(); askFull(s.mq); }}>
+      <input ref=${heroRef} value=${s.mq} placeholder="Tulis pertanyaan Anda…" aria-label="Pertanyaan untuk Mancu" onChange=${e => set({ mq: e.target.value })} />
+      <button type="submit" className="send" title="Kirim" aria-label="Kirim" disabled=${!s.mq.trim()}>${I('arrowUp', 18)}</button>
+    </form>`;
+  const chatStarted = s.fullMsgs.length > 0 || s.fullTyping;
+  const mancuPage = !chatStarted ? html`
+    <section className="mancu-band mancu-start">
+      <div className="band-in">
+        <button className="mancu-back" onClick=${goHome}>${I('chevL', 16)}<span>Beranda</span></button>
+        <span className="mc-mark lg">${I('sparkles', 24)}</span>
+        <h1>Tanya Mancu AI</h1>
+        <p>Dijawab langsung dari SOP, lengkap dengan sumbernya.</p>
+        ${fullComposer}
+        ${prompts.length > 0 && html`
+          <div className="mancu-chips">${prompts.map(p => html`<button key=${p} onClick=${() => askFull(p)}>${p}</button>`)}</div>`}
+      </div>
+    </section>` : html`
+    <div className="full-chat">
+      <div className="chat-head">
+        <button className="d-btn" title="Beranda" aria-label="Beranda" onClick=${goHome}>${I('chevL', 18)}</button>
+        <span className="mc-mark sm">${I('sparkles', 16)}</span>
+        <span className="chat-title"><b>Tanya Mancu AI</b><span>Membaca semua SOP · ${readable} dokumen</span></span>
+        <button className="chat-new" onClick=${newChat}>${I('rotate', 15)}<span>Chat baru</span></button>
+      </div>
+      <div className="chat-col">
+        ${msgNodes(s.fullMsgs)}
+        ${s.fullTyping && thinking(s.think)}
+      </div>
+      <div className="chat-foot">
+        <div className="chat-foot-in">
+          ${fullComposer}
+          <span className="disclaimer">Mancu bisa salah. Cek kembali di SOP yang dikutip.</span>
         </div>
-        ${!s.homeQ && prompts.length > 0 && html`
-          <div className="examples">
-            <span className="eyebrow">Coba tanya</span>
-            ${prompts.map(p => html`<button key=${p} className="ex-link" onClick=${() => askHome(p)}>${p}</button>`)}
-          </div>`}
       </div>
-      ${s.homeQ && html`
-        <div className="results">
-          <div className="tabs sm" role="tablist">
-            <button role="tab" className=${'tab' + (s.homeTab === 'mancu' ? ' on' : '')} onClick=${() => set({ homeTab: 'mancu' })}><span>Jawaban Mancu</span></button>
-            <button role="tab" className=${'tab' + (s.homeTab === 'kw' ? ' on' : '')} onClick=${() => set({ homeTab: 'kw' })}><span>Hasil kata kunci</span><span className="n">${loading ? '–' : kwRes.length}</span></button>
-          </div>
-          ${s.homeTab === 'mancu' && html`
-            <div className="ans">
-              <span className="ans-label"><span className="ic orange">${I('sparkles', 14)}</span>Mancu<span className="q">· “${s.homeQ}”</span></span>
-              ${s.homeTyping && (thinking(s.think) || typingEl)}
-              ${ans && ans.error && html`<span className="ans-note">${ans.intro}</span>`}
-              ${ans && !ans.error && html`
-                <span className="ans-intro">${ans.intro}</span>
-                ${ans.items.length > 0 && html`<ol className="numlist">${ans.items.map((t, i) => html`<li key=${i}><span>${i + 1}.</span><span>${rich(t)}</span></li>`)}</ol>`}
-                ${ans.note && html`<span className="ans-note">${ans.note}</span>`}
-                ${ans.sources.length > 0 && html`
-                  <div className="src-links">
-                    <span className="eyebrow">Sumber</span>
-                    ${ans.sources.map(src => html`<button key=${src.label} className="src-link" onClick=${() => openSource(src)}><span>${src.label}</span>${I('arrowR', 16)}</button>`)}
-                  </div>`}
-                ${voteBar(ans)}
-                <div className="ans-foot">
-                  <button className="link-strong" onClick=${() => set({ chatOpen: true, msgs: [{ user: true, text: s.homeQ }, ans] })}><span>Lanjutkan di chat</span>${I('arrowR', 16)}</button>
-                  <span className="disclaimer">Mancu bisa salah. Cek kembali di SOP yang dikutip.</span>
-                </div>`}
-            </div>`}
-          ${s.homeTab === 'kw' && html`
-            <div className="rows" style=${{ marginTop: 16 }}>
-              ${kwRes.map(r => html`<${Row} key=${r.key} title=${markWords(r.title, homeWs)} meta=${r.meta} onClick=${r.open} />`)}
-              ${!loading && !kwRes.length && html`<span className="empty">Tidak ada dokumen dengan kata kunci ini.</span>`}
-            </div>`}
-        </div>`}
     </div>`;
 
-  const bq = s.browseQ.trim().toLowerCase();
-  const browseHits = bq ? lib.filter(d => (d.code + ' ' + d.title + ' ' + d.short).toLowerCase().includes(bq)) : [];
-  const countFor = (type, dept) => lib.filter(d => d.type === type && (!dept || d.areas.includes(dept))).length;
-  const homeBrowse = html`
-    <div className="browse">
-      <h1 className="page-title">Jelajahi dokumen</h1>
-      <div className=${'field-search' + (s.focus === 'browse' ? ' focus' : '')}>
-        ${I('search', 16)}
-        <input ref=${browseRef} value=${s.browseQ} placeholder="Cari judul atau kode dokumen…" aria-label="Cari judul atau kode dokumen"
-          onChange=${e => set({ browseQ: e.target.value })} onFocus=${() => set({ focus: 'browse' })} onBlur=${() => set(p => p.focus === 'browse' ? { focus: null } : {})} />
-        ${bq && html`<button className="icon-btn" title="Hapus" aria-label="Hapus" onClick=${() => set({ browseQ: '' })}>${I('x', 18)}</button>`}
+  // ================================================================= home
+  // One page: search, area cards, recent documents and the full list. Filters also narrow the search.
+  const typeMatches = (d, type) => type === 'all' || d.type === type;
+  const areaMatches = (d, area) => !area || d.areas.includes(area);
+  const scoped = lib.filter(d => typeMatches(d, s.type) && areaMatches(d, s.browseArea));
+  const bq = s.browseQ.trim(), bqLow = bq.toLowerCase(), bWs = bq ? words(bq) : [];
+  // A title or code containing the exact text comes first, then the sections that mention it.
+  const titleHits = bq ? scoped.filter(d => (d.code + ' ' + d.title + ' ' + d.short).toLowerCase().includes(bqLow)) : [];
+  const browseHits = !bq ? [] : [
+    ...titleHits.map(d => ({ key: d.id, d, sec: null, title: docTitle(d), sub: d.code + ' · ' + typeOf(d.type).short, text: '' })),
+    ...keywordHits(bq, scoped, 12).filter(h => h.sec || !titleHits.includes(h.d))
+  ];
+  const sorted = [...scoped].sort((x, y) => s.browseSort === 'new'
+    ? String((y.versions[0] || {}).effectiveDate || '').localeCompare(String((x.versions[0] || {}).effectiveDate || ''))
+    : docTitle(x).localeCompare(docTitle(y), 'id'));
+  const docMeta = d => { const v = d.versions[0]; return d.code + ' · Rev ' + revLabel(d) + ' · Berlaku ' + (v ? fmtDate(v.effectiveDate) : '–'); };
+  const docTags = d => [...(isFresh(d) ? [{ label: 'Baru diperbarui', fresh: true }] : []), ...d.areas.map(x => (deptOf(x) || {}).short).filter(Boolean).map(label => ({ label }))];
+  const recentDocs = recentIds().map(id => lib.find(d => d.id === id)).filter(Boolean).slice(0, RECENT_MAX);
+  const latestDate = lib.map(d => (d.versions[0] || {}).effectiveDate || '').filter(x => x && Date.parse(x) <= Date.now()).sort().pop();
+  const filtered = s.type !== 'all' || !!s.browseArea;
+  const clearFilters = () => set({ type: 'all', browseArea: null });
+  const typeCount = t => lib.filter(d => typeMatches(d, t) && areaMatches(d, s.browseArea)).length;
+  const areaCount = x => lib.filter(d => typeMatches(d, s.type) && areaMatches(d, x)).length;
+  // Arrow keys: down from the search box into the results, up from the first result back to the box. Enter opens a row.
+  const browseKeys = e => {
+    if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
+    const rows = [...e.currentTarget.querySelectorAll('.row')], at = rows.indexOf(document.activeElement);
+    const inBox = e.target === browseRef.current;
+    if (!inBox && at < 0) return;
+    e.preventDefault();
+    if (e.key === 'ArrowDown') { const next = inBox ? rows[0] : rows[at + 1]; if (next) next.focus(); }
+    else if (at <= 0) { if (browseRef.current) browseRef.current.focus(); }
+    else rows[at - 1].focus();
+  };
+  const clearSearch = () => { set({ browseQ: '' }); if (browseRef.current) browseRef.current.focus(); };
+  const jenisSelect = html`
+    <label className="sort"><span>Jenis</span>
+      <select value=${s.type} aria-label="Jenis dokumen" onChange=${e => set({ type: e.target.value })}>
+        <option value="all">Semua</option>
+        ${TYPES.map(t => html`<option key=${t.id} value=${t.id}>${t.short} (${typeCount(t.id)})</option>`)}
+      </select>
+    </label>`;
+  const noResults = html`
+    <div className="no-results">
+      <b>${bq ? 'Tidak ada hasil untuk “' + bq + '”' : 'Belum ada dokumen di filter ini'}</b>
+      <div className="no-results-actions">
+        ${filtered && html`<button className="btn" onClick=${clearFilters}>Hapus filter</button>`}
+        ${bq && html`<button className="btn" onClick=${clearSearch}>Hapus pencarian</button>`}
       </div>
-      ${bq ? html`
-        <div style=${{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          <span style=${{ fontSize: 13, color: 'var(--muted)' }}>${browseHits.length ? browseHits.length + ' dokumen' : 'Tidak ada dokumen yang cocok.'}</span>
-          ${browseHits.length > 0 && html`<div className="rows">${browseHits.map(d => html`<${Row} key=${d.id} title=${d.title} meta=${d.code + ' · ' + typeOf(d.type).short + ' · ' + applies(d) + ' · Rev ' + revLabel(d)} onClick=${() => openDoc(d)} />`)}</div>`}
-        </div>` : html`
-        <div style=${{ display: 'flex', flexDirection: 'column', gap: 18 }}>
-          <div className="pills">
-            ${TYPES.map(t => html`<button key=${t.id} className=${'pill' + (s.type === t.id ? ' on' : '')} onClick=${() => set({ type: t.id })}><span>${t.short}</span><span className="n">${loading ? '–' : countFor(t.id)}</span></button>`)}
-          </div>
-          <p style=${{ fontSize: 15, color: 'var(--sec2)' }}>${typeOf(s.type).desc}</p>
-          <div className="area-groups">
-            ${DEPTS.map(d => { const inArea = lib.filter(x => x.type === s.type && x.areas.includes(d.id)); return html`
-              <section key=${d.id} id=${'area-' + d.id} className="area-group">
-                <h2>${d.label}</h2>
-                <div className="rows">
-                  ${inArea.map(x => { const v = x.versions[0]; return html`<${Row} key=${x.id} title=${docTitle(x)} meta=${x.code + ' · Rev ' + revLabel(x) + ' · Berlaku ' + (v ? fmtDate(v.effectiveDate) : '–')} onClick=${() => openDoc(x)} />`; })}
-                  ${!inArea.length && html`<span className="area-empty">${loading ? 'Memuat…' : 'Belum ada dokumen'}</span>`}
-                </div>
-              </section>`; })}
-          </div>
-        </div>`}
+      ${bq && mancuCard('Tanya Mancu tentang “' + bq + '”', '', bq, true)}
     </div>`;
-
   const home = html`
-    <div>
-      <nav className="tabs center" role="tablist">
-        <button role="tab" className=${'tab' + (s.homeView === 'search' ? ' on' : '')} onClick=${() => set({ homeView: 'search' })}>Cari</button>
-        <button role="tab" className=${'tab' + (s.homeView === 'browse' ? ' on' : '')} onClick=${() => set({ homeView: 'browse' })}>Jelajahi dokumen</button>
-      </nav>
-      ${s.homeView === 'search' ? homeSearch : homeBrowse}
+    <div onKeyDown=${browseKeys}>
+      <section className="home-band">
+        <div className="band-in">
+          <h1>Temukan prosedur gudang dengan cepat</h1>
+          <p>${loading ? 'Memuat dokumen…' : lib.length + ' dokumen' + (latestDate ? ' · terakhir diperbarui ' + fmtDate(latestDate) : '')}</p>
+          <div className=${'home-search' + (s.focus === 'browse' ? ' focus' : '')}>
+            ${I('search', 20)}
+            <input ref=${browseRef} value=${s.browseQ} placeholder="Cari judul, kode, atau isi SOP…" aria-label="Cari judul, kode, atau isi SOP"
+              onChange=${e => set({ browseQ: e.target.value })} onFocus=${() => set({ focus: 'browse' })} onBlur=${() => set(p => p.focus === 'browse' ? { focus: null } : {})} />
+            ${bq && html`<button className="icon-btn" title="Hapus" aria-label="Hapus pencarian" onClick=${clearSearch}>${I('x', 18)}</button>`}
+          </div>
+          ${mancuCard('Tanya Mancu AI', 'Dijawab langsung dari SOP, lengkap dengan sumbernya.')}
+        </div>
+      </section>
+      <div className="home-body">
+        <section className="home-sec">
+          <span className="eyebrow lg">Area</span>
+          <div className="area-cards" role="group" aria-label="Pilih area">
+            ${DEPTS.map(d => { const c = areaCount(d.id), on = s.browseArea === d.id; return html`
+              <button key=${d.id} className=${'area-card' + (on ? ' on' : '')} aria-pressed=${on} disabled=${!loading && !c && !on} onClick=${() => set({ browseArea: on ? null : d.id })}>
+                <span className="ac-icon">${I(AREA_ICONS[d.id] || 'file', 20)}</span><span className="ac-t"><b>${d.short}</b><span>${loading ? 'Memuat…' : c ? c + ' dokumen' : 'Belum ada'}</span></span>
+              </button>`; })}
+          </div>
+        </section>
+        ${!bq && recentDocs.length > 0 && html`
+          <section className="home-sec">
+            <span className="eyebrow lg">Terakhir dibuka</span>
+            <div className="rows">${recentDocs.map(d => html`<${Row} key=${d.id} title=${docTitle(d)} meta=${docMeta(d)} onClick=${() => openDoc(d)} />`)}</div>
+          </section>`}
+        <section className="home-sec">
+          <div className="list-bar">
+            <span className="eyebrow lg">${bq ? browseHits.length + ' hasil' : (s.browseArea ? (deptOf(s.browseArea) || {}).short : 'Semua dokumen') + (loading ? '' : ' · ' + sorted.length)}</span>
+            <div className="list-tools">
+              ${jenisSelect}
+              ${!bq && html`<label className="sort"><span>Urutkan</span>
+                <select value=${s.browseSort} aria-label="Urutkan dokumen" onChange=${e => set({ browseSort: e.target.value })}>
+                  <option value="name">Nama A-Z</option>
+                  <option value="new">Terbaru</option>
+                </select>
+              </label>`}
+            </div>
+          </div>
+          ${bq ? (browseHits.length > 0 ? html`
+            <div className="rows">
+              ${browseHits.map(h => html`<${Row} key=${h.key} title=${markWords(h.title, bWs)} meta=${h.sub} text=${h.text && markWords(h.text, bWs)} onClick=${() => openDoc(h.d, h.sec, bWs)} />`)}
+            </div>` : !loading && noResults)
+          : sorted.length > 0 ? html`
+            <div className="rows">${sorted.map(d => html`<${Row} key=${d.id} title=${docTitle(d)} meta=${docMeta(d)} tags=${docTags(d)} onClick=${() => openDoc(d)} />`)}</div>` : !loading && noResults}
+        </section>
+      </div>
     </div>`;
 
   // ================================================================= search results
@@ -915,11 +1054,7 @@ function App() {
         ${sHits.map(h => html`<${Row} key=${h.key} title=${markWords(h.title, sWs)} meta=${h.sub} text=${h.text && markWords(h.text, sWs)} onClick=${() => openDoc(h.d, h.sec, sWs)} />`)}
         ${!loading && !sHits.length && html`<p className="empty">Tidak ada bagian dokumen yang cocok dengan kata kunci ini.</p>`}
       </div>
-      <div className="res-ask">
-        <span className="spark-tile" style=${{ width: 36, height: 36 }}>${I('sparkles', 18)}</span>
-        <span className="t"><b>${sHits.length ? 'Belum menemukan jawabannya?' : 'Coba tanya Mancu'}</b><span>Mancu membaca semua SOP dan menjawab dengan bagian sumbernya.</span></span>
-        <button className="btn primary" onClick=${() => askFromSearch(s.sq)}>${I('sparkles', 16)}<span>Tanya Mancu</span></button>
-      </div>
+      ${mancuCard(sHits.length ? 'Belum menemukan jawabannya? Tanya Mancu' : 'Coba tanya Mancu', 'Dijawab langsung dari SOP, lengkap dengan sumbernya.', s.sq)}
     </div>`;
 
   // ================================================================= reader
@@ -1281,7 +1416,7 @@ function App() {
         <div className="d-name">
           <b>Mancu</b>
           <span className="d-ctx" title=${ctxDoc ? 'Mancu mengutamakan dokumen yang sedang Anda buka' : 'Mancu membaca semua dokumen yang terbit'}>
-            ${loading ? 'Memuat dokumen…' : ctxDoc ? html`Membaca <b>${ctxDoc.short || ctxDoc.title}</b>` : html`Membaca semua SOP · ${readable} dokumen`}
+            ${loading ? 'Memuat dokumen…' : ctxDoc ? html`Membaca <b>${docName(ctxDoc)}</b>` : html`Membaca semua SOP · ${readable} dokumen`}
           </span>
         </div>
         <button className="d-btn" title="Chat baru" aria-label="Chat baru" onClick=${() => { askSeq.current++; stopThink(); set({ msgs: [], typing: false, think: null }); }}>${I('rotate', 17)}</button>
@@ -1289,18 +1424,8 @@ function App() {
       </div>
       <div className="d-body" ref=${bodyRef}>
         ${!s.msgs.length && !s.typing && html`
-          <div className="hello"><b>Ada yang bisa dibantu?</b><span>${ctxDoc ? 'Tanyakan apa saja tentang ' + (ctxDoc.short || ctxDoc.title) + '.' : 'Tanyakan prosedur, batas, atau alur kerja gudang.'} Setiap jawaban menyebut bagian sumbernya.</span></div>`}
-        ${s.msgs.map((m, i) => m.user ? html`<div key=${i} className="msg-user">${m.text}</div>` : html`
-          <div key=${i} className="msg-ai">
-            ${m.error ? html`<span className="msg-note">${m.intro}</span>` : html`<span className="intro">${m.intro}</span>`}
-            ${m.items.length > 0 && html`<ol className="ans-list">${m.items.map((t, j) => html`<li key=${j}>${rich(t)}</li>`)}</ol>`}
-            ${m.note && html`<span className="msg-note">${m.note}</span>`}
-            ${m.sources.length > 0 && html`
-              <div className="src-chips">
-                ${m.sources.map(src => html`<button key=${src.label} className="src-chip" onClick=${() => openSource(src)}>${I('file', 13)}<span>${src.label}</span></button>`)}
-              </div>`}
-            ${voteBar(m)}
-          </div>`)}
+          <div className="hello"><b>Ada yang bisa dibantu?</b><span>${ctxDoc ? 'Tanyakan apa saja tentang ' + docName(ctxDoc) + '.' : 'Tanyakan prosedur, batas, atau alur kerja gudang.'} Setiap jawaban menyebut bagian sumbernya.</span></div>`}
+        ${msgNodes(s.msgs)}
         ${s.typing && thinking(s.think)}
         ${promptsPending && html`
           <div className="prompt-list" aria-hidden="true">
@@ -1324,11 +1449,11 @@ function App() {
     </aside>`;
 
   // ================================================================= page
-  const page = s.step === 'home' ? home : s.step === 'search' ? searchPage : s.step === 'reader' ? reader() : writer;
+  const page = s.step === 'home' ? home : s.step === 'mancu' ? mancuPage : s.step === 'search' ? searchPage : s.step === 'reader' ? reader() : writer;
   return html`
     <div style=${{ minHeight: '100vh' }}>
       ${header}
-      <main className=${'main' + (s.step === 'reader' ? ' reader' : '')}>
+      <main className=${'main' + (s.step === 'reader' ? ' reader' : s.step === 'home' ? ' flush' : s.step === 'mancu' ? ' flush chat' : '')}>
         <div className=${'anim' + (s.anim ? '' : ' out')}>${page}</div>
       </main>
       ${s.step === 'reader' && !s.chatOpen && html`
@@ -1336,7 +1461,7 @@ function App() {
           <span className="c">${I('sparkles', 18)}</span>
           <b>Tanya Mancu AI</b>
         </button>`}
-      ${drawer}
+      ${s.step === 'reader' && drawer}
       ${s.toast && html`<div className="toast" role="status">${I('check', 18)}<span>${s.toast}</span></div>`}
     </div>`;
 }
